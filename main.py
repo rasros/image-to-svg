@@ -74,6 +74,38 @@ def is_stale(prev_svg: str | None, new_svg: str) -> bool:
     return ratio >= STALENESS_THRESHOLD
 
 
+def summarize_changes(
+    client: OpenAI,
+    original_data_url: str,
+    iter_index: int,
+    rasterized_svg_data_url: str | None,
+) -> str:
+    lines = [
+        "You compare an original raster image and a current SVG rendering (shown as a rasterized image).",
+        "Describe only the FEW MOST IMPORTANT changes needed to improve overall likeness.",
+        "The priority is to fix overall shapes first, then position of items, and then details like arrows, icons and text.",
+        "Ignore noise and artifacts typical of AI-generated images (random speckles, smeared or melting details, ghost edges, meaningless text blobs, watermarks).",
+        "Keep the list short (3–6 bullets). Output plain text only.",
+        f"Iteration #{iter_index}.",
+    ]
+
+    content = [
+        {"type": "input_text", "text": "\n".join(lines)},
+        {"type": "input_image", "image_url": original_data_url},
+    ]
+
+    if rasterized_svg_data_url:
+        content.append({"type": "input_image", "image_url": rasterized_svg_data_url})
+
+    resp = client.responses.create(
+        model=MODEL_NAME,
+        input=[{"role": "user", "content": content}],
+        temperature=0.1,
+        text={"format": {"type": "text"}},
+    )
+    return resp.output_text
+
+
 def call_openai_for_svg(
     client: OpenAI,
     original_data_url: str,
@@ -82,40 +114,47 @@ def call_openai_for_svg(
     svg_prev: str | None = None,
     svg_prev_invalid_msg: str | None = None,
     rasterized_svg_data_url: str | None = None,
+    change_summary: str | None = None,
 ) -> str:
     lines = [
-        "You convert a raster input image into clean, valid SVG markup.",
-        "Output ONLY a complete <svg>...</svg> document with no explanations or backticks.",
-        "The SVG must be faithful as close to possible to the input image.",
-        "Use shapes, paths, groups, and filters; avoid embedded rasters or <image> tags.",
-        "Ensure the SVG is valid XML and has a single <svg> root.",
+        "You convert a raster input image into a clean, valid SVG.",
+        "Output ONLY a complete <svg>...</svg> with no commentary or backticks.",
+        "Prioritize matching the overall likeness of the image: silhouette, composition, large shapes, major color blocks.",
+        "Do NOT reproduce noise or artifacts typical of AI-generated images (random speckles, glitchy edges, smeared details, meaningless text or watermark-like blobs). Clean them up in the SVG.",
+        "Aim for structural fidelity and clear vector geometry, not pixel-level accuracy.",
+        "Ensure the SVG is valid XML with a single <svg> root.",
         f"Iteration #{iter_index}.",
     ]
 
     if svg_prev is None:
-        lines.append("This is the first attempt. Produce your best initial SVG approximation.")
+        lines.append("This is the first attempt. Produce your best high-level SVG approximation.")
     else:
-        lines.append("Refine the previous SVG. Prefer small, meaningful improvements over total rewrites.")
+        lines.append("Refine the previous SVG by addressing the differences.")
 
     if svg_prev_invalid_msg:
         lines.append(
-            f"The previous SVG was INVALID. Validation error:\n{svg_prev_invalid_msg}\n"
+            f"The previous SVG was INVALID:\n{svg_prev_invalid_msg}\n"
             "Return a corrected, valid SVG."
+        )
+
+    if change_summary:
+        lines.append(
+            "Here is a summary of the MOST IMPORTANT changes needed to improve likeness. Use these as priorities:\n"
+            + change_summary
         )
 
     if rasterized_svg_data_url:
         lines.append(
-            "You are given the original raster image and a rasterized rendering of your latest SVG. "
-            "Use their differences to refine the SVG."
+            "You are given the original raster and a rasterized rendering of your current SVG. "
+            "Use this to improve the likeness as much as possible."
+            "The priority is to fix overall shapes first, then position of items, and then details like arrows, icons and text.",
         )
 
     if svg_prev:
-        lines.append("Here is the previous SVG markup to reuse and improve:\n" + svg_prev)
-
-    instruction_text = "\n".join(lines)
+        lines.append("Here is the previous SVG to refine:\n" + svg_prev)
 
     content = [
-        {"type": "input_text", "text": instruction_text},
+        {"type": "input_text", "text": "\n".join(lines)},
         {"type": "input_image", "image_url": original_data_url},
     ]
 
@@ -165,6 +204,18 @@ def run(
     for i in range(1, max_iter + 1):
         print(f"\n=== Iteration {i}/{max_iter} | temperature={temperature:.2f} ===")
 
+        change_summary = None
+        if previous_svg and current_raster_data_url:
+            change_summary = summarize_changes(
+                client=client,
+                original_data_url=original_data_url,
+                iter_index=i,
+                rasterized_svg_data_url=current_raster_data_url,
+            )
+            print("\nSuggested high-level changes for this iteration:")
+            print(change_summary)
+            print()
+
         raw_text = call_openai_for_svg(
             client=client,
             original_data_url=original_data_url,
@@ -173,6 +224,7 @@ def run(
             svg_prev=previous_svg,
             svg_prev_invalid_msg=previous_invalid_msg,
             rasterized_svg_data_url=current_raster_data_url,
+            change_summary=change_summary,
         )
 
         svg_candidate = extract_svg_fragment(raw_text)
