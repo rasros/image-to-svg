@@ -4,13 +4,11 @@ import base64
 import difflib
 import io
 import logging
-import math
 import os
 import queue
 import random
 import re
 import time
-from collections import deque
 from typing import Optional, List, Any, Tuple, Dict
 
 import multiprocessing as mp
@@ -21,24 +19,20 @@ from PIL import Image
 
 from svgizer.models import ChainState, SearchNode, Task, Result, INVALID_SCORE
 from svgizer.diff_scores import pixel_diff_score
-from svgizer.openai_iface import (
-    summarize_changes,
-    call_openai_for_svg,
-    extract_svg_fragment,
-    is_valid_svg,
-)
+from svgizer.openai_iface import summarize_changes, call_openai_for_svg, extract_svg_fragment, is_valid_svg
 
-# Prompt sampling temperature exploration
 TEMP_STEP = 0.3
 MAX_TEMP = 1.6
 
-# If SVG text is too similar, bump temperature to avoid repeated generations
 STALENESS_THRESHOLD = 0.995
 STALE_HITS_BEFORE_BUMP = 1
 
-# Resume file pattern written by this tool:
-#   {base_name}_node{node_id:05d}_score{score:.6f}.svg
-NODE_FILE_RE = re.compile(r"_node(\d+)_score([0-9.]+)\.svg$")
+# New (score-first, includes parent):
+#   score00000.073180_node00022_parent00018.svg
+NODE_FILE_RE_NEW = re.compile(r"^score([0-9.]+)_node(\d+)_parent(\d+)\.svg$")
+# Old:
+#   output_node00001_score0.123456.svg
+NODE_FILE_RE_OLD = re.compile(r"_node(\d+)_score([0-9.]+)\.svg$")
 
 
 def guess_mime_type(path: str) -> str:
@@ -88,6 +82,11 @@ def _fatal(msg: str) -> str:
     return "FATAL: " + msg
 
 
+def _score_key(score: float) -> str:
+    # fixed width so lex sort == numeric sort
+    return f"{score:012.6f}"
+
+
 def worker_loop(
     task_q: mp.Queue,
     result_q: mp.Queue,
@@ -109,17 +108,13 @@ def worker_loop(
     while True:
         task: Any = task_q.get()
         if task is None:
-            log.info("Worker received shutdown signal.")
             return
 
         assert isinstance(task, Task)
         parent = task.parent_state
 
-        # Jitter around parent's prompt sampling temperature
-        temperature = min(MAX_TEMP, max(0.0, parent.model_temperature + (task.proposal_index * 0.05)))
-        log.info(
-            f"Start task={task.task_id} parent={task.parent_id} proposal={task.proposal_index} temp={temperature:.2f}"
-        )
+        # Small deterministic jitter by worker slot to encourage diversity across workers.
+        temperature = min(MAX_TEMP, max(0.0, parent.model_temperature + (task.worker_slot * 0.07)))
 
         change_summary = None
         if parent.svg and parent.raster_data_url:
@@ -130,11 +125,9 @@ def worker_loop(
                     iter_index=task.parent_id,
                     rasterized_svg_data_url=parent.raster_data_url,
                 )
-                log.info(f"Summary task={task.task_id}:\n{change_summary}")
             except Exception as e:
-                log.warning(f"Summary failed task={task.task_id}: {e}")
+                log.debug(f"Summary failed task={task.task_id}: {e}")
 
-        # OpenAI call
         try:
             raw = call_openai_for_svg(
                 client=client,
@@ -145,16 +138,15 @@ def worker_loop(
                 svg_prev_invalid_msg=parent.invalid_msg,
                 rasterized_svg_data_url=parent.raster_data_url,
                 change_summary=change_summary,
-                diversity_hint=f"parent={task.parent_id} proposal={task.proposal_index}",
+                diversity_hint=f"parent={task.parent_id} worker={task.worker_slot}",
             )
             svg = extract_svg_fragment(raw)
-            log.info(f"OpenAI returned task={task.task_id} svg_len={len(svg)}")
         except Exception as e:
             result_q.put(
                 Result(
                     task_id=task.task_id,
                     parent_id=task.parent_id,
-                    proposal_index=task.proposal_index,
+                    worker_slot=task.worker_slot,
                     svg=None,
                     valid=False,
                     invalid_msg=_fatal(f"OpenAI call failed: {e}"),
@@ -166,15 +158,13 @@ def worker_loop(
             )
             continue
 
-        # Validate SVG (invalid candidates are expected sometimes)
         valid, err = is_valid_svg(svg)
         if not valid:
-            log.warning(f"Invalid SVG task={task.task_id}: {err}")
             result_q.put(
                 Result(
                     task_id=task.task_id,
                     parent_id=task.parent_id,
-                    proposal_index=task.proposal_index,
+                    worker_slot=task.worker_slot,
                     svg=svg,
                     valid=False,
                     invalid_msg=err,
@@ -186,17 +176,15 @@ def worker_loop(
             )
             continue
 
-        # Rasterize and score
         try:
             png = rasterize_svg_to_png_bytes(svg)
             score = pixel_diff_score(original_rgb, png)
-            log.info(f"Scored task={task.task_id} score={score:.6f}")
         except Exception as e:
             result_q.put(
                 Result(
                     task_id=task.task_id,
                     parent_id=task.parent_id,
-                    proposal_index=task.proposal_index,
+                    worker_slot=task.worker_slot,
                     svg=svg,
                     valid=False,
                     invalid_msg=_fatal(f"Rasterize/score failed: {e}"),
@@ -212,7 +200,7 @@ def worker_loop(
             Result(
                 task_id=task.task_id,
                 parent_id=task.parent_id,
-                proposal_index=task.proposal_index,
+                worker_slot=task.worker_slot,
                 svg=svg,
                 valid=True,
                 invalid_msg=None,
@@ -225,59 +213,74 @@ def worker_loop(
 
 
 def _load_resume_nodes(
+    nodes_dir: str,
     base_name: str,
     ext: str,
     log: logging.Logger,
     base_model_temperature: float,
 ) -> Tuple[List[SearchNode], Optional[SearchNode], int]:
-    directory = os.path.dirname(base_name) or "."
-    prefix = os.path.basename(base_name) + "_node"
-
     accepted: List[SearchNode] = []
     best_seen: Optional[SearchNode] = None
     max_id = 0
 
-    for fn in os.listdir(directory):
-        if not fn.startswith(prefix) or not fn.endswith(ext):
-            continue
-        m = NODE_FILE_RE.search(fn)
-        if not m:
-            continue
+    scan_paths: List[Tuple[str, str]] = []
+    if os.path.isdir(nodes_dir):
+        scan_paths.append((nodes_dir, "new"))
+    out_dir = os.path.dirname(base_name) or "."
+    scan_paths.append((out_dir, "old"))
 
-        node_id = int(m.group(1))
-        score = float(m.group(2))
-        path = os.path.join(directory, fn)
-
+    for directory, mode in scan_paths:
         try:
-            with open(path, "r", encoding="utf-8") as f:
-                svg = f.read()
-            png = rasterize_svg_to_png_bytes(svg)
-            raster_data_url = png_bytes_to_data_url(png)
-        except Exception as e:
-            log.warning(f"Resume: failed to load {fn}: {e}")
+            filenames = os.listdir(directory)
+        except Exception:
             continue
 
-        state = ChainState(
-            svg=svg,
-            raster_data_url=raster_data_url,
-            score=score,
-            model_temperature=base_model_temperature,
-            stale_hits=0,
-            invalid_msg=None,
-        )
-        node = SearchNode(score=score, id=node_id, state=state)
-        accepted.append(node)
+        for fn in filenames:
+            if not fn.endswith(ext):
+                continue
 
-        if best_seen is None or score < best_seen.score:
-            best_seen = node
-        max_id = max(max_id, node_id)
+            path = os.path.join(directory, fn)
+
+            if mode == "new":
+                m = NODE_FILE_RE_NEW.match(fn)
+                if not m:
+                    continue
+                score = float(m.group(1))
+                node_id = int(m.group(2))
+                parent_id = int(m.group(3))
+            else:
+                m = NODE_FILE_RE_OLD.search(fn)
+                if not m:
+                    continue
+                node_id = int(m.group(1))
+                score = float(m.group(2))
+                parent_id = 0  # not recoverable from old filenames
+
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    svg = f.read()
+                png = rasterize_svg_to_png_bytes(svg)
+                raster_data_url = png_bytes_to_data_url(png)
+            except Exception as e:
+                log.warning(f"Resume: failed to load {path}: {e}")
+                continue
+
+            state = ChainState(
+                svg=svg,
+                raster_data_url=raster_data_url,
+                score=score,
+                model_temperature=base_model_temperature,
+                stale_hits=0,
+                invalid_msg=None,
+            )
+            node = SearchNode(score=score, id=node_id, parent_id=parent_id, state=state)
+            accepted.append(node)
+
+            if best_seen is None or node.score < best_seen.score:
+                best_seen = node
+            max_id = max(max_id, node_id)
 
     accepted.sort(key=lambda n: n.id)
-    if accepted:
-        log.info(f"Resume: loaded {len(accepted)} prior nodes (max_id={max_id}).")
-        if best_seen:
-            log.info(f"Resume: best prior node={best_seen.id} score={best_seen.score:.6f}")
-
     return accepted, best_seen, max_id
 
 
@@ -285,24 +288,15 @@ def run_search(
     image_path: str,
     output_svg_path: str,
     max_accepts: int,
-    proposals_per_step: int,
-    base_model_temperature: float,
     workers: int,
-    log_level: str,
+    base_model_temperature: float,
+    max_total_tasks: int,
+    max_wall_seconds: Optional[float],
+    resume: bool,
     top_k: int,
     write_top_k_each: int,
-    *,
-    # Limits
-    max_total_tasks: int = 10_000,
-    max_wall_seconds: Optional[float] = None,
-    # Resume
-    resume: bool = True,
-    # Simulated annealing (score-space)
-    anneal_t0: float = 0.03,
-    anneal_alpha: float = 0.995,
-    anneal_min_t: float = 0.002,
-    # Occasionally propose from best-ever rather than current
-    propose_from_best_prob: float = 0.2,
+    write_lineage: bool,
+    log_level: str,
 ) -> None:
     setup_logger(log_level)
     log = logging.getLogger("main")
@@ -311,19 +305,8 @@ def run_search(
         raise SystemExit("OPENAI_API_KEY environment variable is not set.")
     if not os.path.isfile(image_path):
         raise SystemExit(f"Input image '{image_path}' does not exist.")
-    if max_accepts <= 0:
-        raise SystemExit("max_accepts must be > 0")
-    if proposals_per_step <= 0:
-        raise SystemExit("proposals_per_step must be > 0")
-    if workers <= 0:
-        raise SystemExit("workers must be > 0")
-    if top_k <= 0:
-        raise SystemExit("top_k must be > 0")
-    if max_total_tasks <= 0:
-        raise SystemExit("max_total_tasks must be > 0")
 
     original_data_url = encode_image_to_data_url(image_path)
-
     original_img = Image.open(image_path).convert("RGB")
     buf = io.BytesIO()
     original_img.save(buf, format="PNG")
@@ -333,14 +316,21 @@ def run_search(
     if not ext:
         ext = ".svg"
 
+    out_dir = os.path.dirname(base_name) or "."
+    nodes_dir = os.path.join(out_dir, os.path.basename(base_name) + "_nodes")
+    os.makedirs(nodes_dir, exist_ok=True)
+
+    lineage_tsv_path = os.path.join(out_dir, os.path.basename(base_name) + "_lineage.tsv")
+    lineage_dot_path = os.path.join(out_dir, os.path.basename(base_name) + "_lineage.dot")
+
     start_time = time.monotonic()
 
     def time_up() -> bool:
         return max_wall_seconds is not None and (time.monotonic() - start_time) >= max_wall_seconds
 
-    # Multiprocessing
+    # Multiprocessing: main feeds tasks, workers pull when ready.
     ctx = mp.get_context("spawn")
-    task_q: mp.Queue = ctx.Queue(maxsize=max(512, workers * 256))
+    task_q: mp.Queue = ctx.Queue(maxsize=max(64, workers * 8))
     result_q: mp.Queue = ctx.Queue()
 
     procs: List[mp.Process] = []
@@ -372,7 +362,29 @@ def run_search(
             except Exception:
                 pass
 
-    # Root chain state
+    def write_lineage_files(node_info: Dict[int, Tuple[int, float, str]]) -> None:
+        if not write_lineage:
+            return
+        try:
+            with open(lineage_tsv_path, "w", encoding="utf-8") as f:
+                f.write("node_id\tparent_id\tscore\tpath\n")
+                for nid in sorted(node_info.keys()):
+                    pid, sc, pth = node_info[nid]
+                    f.write(f"{nid}\t{pid}\t{sc:.6f}\t{pth}\n")
+
+            with open(lineage_dot_path, "w", encoding="utf-8") as f:
+                f.write("digraph lineage {\n")
+                f.write('  rankdir="LR";\n')
+                for nid in sorted(node_info.keys()):
+                    pid, sc, _ = node_info[nid]
+                    f.write(f'  n{nid} [label="{nid}\\n{sc:.6f}"];\n')
+                    if pid != 0:
+                        f.write(f"  n{pid} -> n{nid};\n")
+                f.write("}\n")
+        except Exception as e:
+            log.warning(f"Failed writing lineage files: {e}")
+
+    # Root state
     root_state = ChainState(
         svg=None,
         raster_data_url=None,
@@ -382,160 +394,120 @@ def run_search(
         invalid_msg=None,
     )
 
-    # Registry for looking up parent states by id (current/best + accepted history)
     node_states: Dict[int, ChainState] = {0: root_state}
+    node_info: Dict[int, Tuple[int, float, str]] = {}
+
     accepted_nodes: List[SearchNode] = []
-    best_seen: Optional[SearchNode] = None
+    best_node: Optional[SearchNode] = None
     next_node_id = 0
 
-    # Resume: load prior nodes so we can continue from them
     if resume:
-        prior_nodes, prior_best, max_id = _load_resume_nodes(base_name, ext, log, base_model_temperature)
+        prior_nodes, prior_best, max_id = _load_resume_nodes(nodes_dir, base_name, ext, log, base_model_temperature)
         if prior_nodes:
             accepted_nodes.extend(prior_nodes)
-            best_seen = prior_best
+            best_node = prior_best
             next_node_id = max_id
             for n in prior_nodes:
                 node_states[n.id] = n.state
 
-    # SA chain:
-    # - current: proposals usually refine from here
-    # - best: best-ever seen (final output)
-    if best_seen is not None:
-        current_id = best_seen.id
-        current_state = best_seen.state
-        current_score = best_seen.score
-        best_id = best_seen.id
-        best_state = best_seen.state
-        best_score = best_seen.score
-    else:
-        current_id = 0
-        current_state = root_state
-        current_score = INVALID_SCORE
-        best_id = 0
-        best_state = root_state
-        best_score = INVALID_SCORE
-
-    anneal_T = max(0.0, float(anneal_t0))
-
-    # Track top-K for snapshot writing
-    top_list: List[SearchNode] = []
-    if best_seen is not None:
-        top_list = sorted(accepted_nodes, key=lambda n: n.score)[: top_k]
-
-    next_task_id = 1
-    pending_tasks: deque[Task] = deque()
-    global_proposal_counter = 0
-
-    def accept_move(new_score: float, cur_score: float, T: float) -> bool:
-        if cur_score >= INVALID_SCORE:
-            return True
-        if new_score <= cur_score:
-            return True
-        if T <= 0:
-            return False
-        d = new_score - cur_score
-        try:
-            p = math.exp(-d / T)
-        except OverflowError:
-            p = 0.0
-        return random.random() < p
-
     def choose_parent_id() -> int:
-        if best_id != 0 and random.random() < propose_from_best_prob:
-            return best_id
-        return current_id
+        # Your requested behavior: always refine the current best available.
+        if best_node is not None:
+            return best_node.id
+        return 0
 
-    def try_enqueue_task(task: Task) -> bool:
-        try:
-            task_q.put_nowait(task)
-            log.info(
-                f"Enqueue task={task.task_id} parent={task.parent_id} proposal={task.proposal_index} "
-                f"temp≈{min(MAX_TEMP, task.parent_state.model_temperature + (task.proposal_index*0.05)):.2f}"
-            )
-            return True
-        except queue.Full:
-            return False
-
-    def pump_enqueues(budget: int = 8192) -> None:
-        nonlocal next_task_id, global_proposal_counter
-        if time_up():
-            return
-
-        # 1) Flush pending first
-        for _ in range(budget):
-            if not pending_tasks:
-                break
-            if next_task_id > max_total_tasks:
-                return
-            t = pending_tasks[0]
-            if try_enqueue_task(t):
-                pending_tasks.popleft()
-                next_task_id += 1
-            else:
-                return
-
-        # 2) Generate new tasks (pipelined)
-        for _ in range(budget):
-            if next_task_id > max_total_tasks:
-                return
-
-            parent_id = choose_parent_id()
-            parent_state = node_states.get(parent_id, root_state)
-
-            # proposal_index is small and reused to control jitter; global counter ensures diversity_hint changes
-            proposal_index = global_proposal_counter % max(1, proposals_per_step)
-            global_proposal_counter += 1
-
-            task = Task(
-                task_id=next_task_id,
-                parent_id=parent_id,
-                parent_state=parent_state,
-                proposal_index=proposal_index,
-            )
-
-            if try_enqueue_task(task):
-                next_task_id += 1
-            else:
-                pending_tasks.append(task)
-                return
-
-    def handle_result(res: Result) -> bool:
-        nonlocal next_node_id
-        nonlocal current_id, current_state, current_score
-        nonlocal best_id, best_state, best_score
-        nonlocal anneal_T
-        nonlocal best_seen, top_list
-
-        # Fatal worker errors cancel the run
-        if res.invalid_msg and res.invalid_msg.startswith("FATAL:"):
-            shutdown_all(res.invalid_msg, terminate=True)
-            raise SystemExit(res.invalid_msg)
-
-        # Reject invalid / unscored proposals
-        if (not res.valid) or (res.svg is None) or (res.raster_png is None) or (res.score >= INVALID_SCORE):
-            log.warning(
-                f"Reject task={res.task_id} parent={res.parent_id} proposal={res.proposal_index} "
-                f"reason={res.invalid_msg}"
-            )
-            return False
-
-        # Parent state for staleness tracking / temp bumping
-        parent_state = node_states.get(res.parent_id, root_state)
+    # Temperature bumping based on staleness (stored on parent lineage)
+    def next_lineage_temp(parent_id: int, parent_svg: Optional[str], child_svg: str) -> Tuple[float, int]:
+        parent_state = node_states.get(parent_id, root_state)
         next_temp = parent_state.model_temperature
         stale_hits = parent_state.stale_hits
 
-        if parent_state.svg and is_stale(parent_state.svg, res.svg):
+        if parent_svg and is_stale(parent_svg, child_svg):
             stale_hits += 1
             if stale_hits >= STALE_HITS_BEFORE_BUMP and next_temp < MAX_TEMP:
                 next_temp = min(MAX_TEMP, next_temp + TEMP_STEP)
                 stale_hits = 0
-                log.info(f"Staleness: bump model temp for parent={res.parent_id} -> {next_temp:.2f}")
         else:
             stale_hits = 0
+        return next_temp, stale_hits
 
-        # Create a new accepted node (accepted in the sense "valid & scored"; SA decision is separate)
+    # Task accounting
+    next_task_id = 1
+    tasks_enqueued = 0
+    tasks_completed = 0
+    accepted_valid = 0
+    in_flight = 0
+
+    def enqueue_one(worker_slot: int) -> bool:
+        nonlocal next_task_id, tasks_enqueued, in_flight
+        if next_task_id > max_total_tasks:
+            return False
+
+        pid = choose_parent_id()
+        pstate = node_states.get(pid, root_state)
+
+        t = Task(
+            task_id=next_task_id,
+            parent_id=pid,
+            parent_state=pstate,
+            worker_slot=worker_slot,
+        )
+
+        try:
+            task_q.put_nowait(t)
+        except queue.Full:
+            return False
+
+        next_task_id += 1
+        tasks_enqueued += 1
+        in_flight += 1
+        return True
+
+    # Start: exactly `workers` initial tasks (root if no resume-best, otherwise best)
+    for slot in range(workers):
+        if not enqueue_one(worker_slot=slot):
+            break
+
+    while True:
+        if time_up():
+            log.warning("Stopping: wall-clock limit reached.")
+            break
+        if accepted_valid >= max_accepts:
+            break
+        if tasks_completed >= max_total_tasks:
+            break
+        if in_flight == 0:
+            # nothing running and can't enqueue -> stop
+            break
+
+        try:
+            res: Result = result_q.get(timeout=0.2)
+        except queue.Empty:
+            continue
+
+        in_flight = max(0, in_flight - 1)
+        tasks_completed += 1
+
+        # Fatal worker errors
+        if res.invalid_msg and res.invalid_msg.startswith("FATAL:"):
+            shutdown_all(res.invalid_msg, terminate=True)
+            raise SystemExit(res.invalid_msg)
+
+        # Immediately enqueue a replacement task for the worker slot that just freed up
+        # (unless we're stopping).
+        if (accepted_valid < max_accepts) and (next_task_id <= max_total_tasks) and (not time_up()):
+            enqueue_one(worker_slot=res.worker_slot)
+
+        # Ignore invalid results
+        if (not res.valid) or (res.svg is None) or (res.raster_png is None) or (res.score >= INVALID_SCORE):
+            continue
+
+        # Create node
         next_node_id += 1
+
+        parent_state = node_states.get(res.parent_id, root_state)
+        next_temp, stale_hits = next_lineage_temp(res.parent_id, parent_state.svg, res.svg)
+
         state = ChainState(
             svg=res.svg,
             raster_data_url=png_bytes_to_data_url(res.raster_png),
@@ -544,105 +516,60 @@ def run_search(
             stale_hits=stale_hits,
             invalid_msg=None,
         )
-        node = SearchNode(score=res.score, id=next_node_id, state=state)
+        node = SearchNode(score=res.score, id=next_node_id, parent_id=res.parent_id, state=state)
         accepted_nodes.append(node)
         node_states[node.id] = node.state
 
-        # Write intermediate for resume/debugging
-        iter_path = f"{base_name}_node{node.id:05d}_score{node.score:.6f}{ext}"
+        # Write node (score-first)
+        fn = f"score{_score_key(node.score)}_node{node.id:05d}_parent{node.parent_id:05d}{ext}"
+        iter_path = os.path.join(nodes_dir, fn)
         try:
             with open(iter_path, "w", encoding="utf-8") as f:
                 f.write(node.state.svg or "")
-            log.info(f"Wrote {iter_path}")
         except Exception as e:
             shutdown_all(f"Failed to write {iter_path}: {e}", terminate=True)
             raise SystemExit(1)
 
-        # Best-ever tracking
-        if best_score >= INVALID_SCORE or node.score < best_score:
-            best_id = node.id
-            best_state = node.state
-            best_score = node.score
-            best_seen = node
+        node_info[node.id] = (node.parent_id, node.score, iter_path)
+
+        # Update best + top-k list
+        if best_node is None or node.score < best_node.score:
+            best_node = node
             log.info(f"NEW BEST node={node.id} score={node.score:.6f}")
 
-        # Maintain top-K list for snapshots only
-        top_list.append(node)
-        top_list.sort(key=lambda n: n.score)
-        if len(top_list) > top_k:
-            top_list[:] = top_list[:top_k]
+        accepted_valid += 1
 
-        # SA decision: whether this node becomes the new "current"
-        moved = accept_move(node.score, current_score, anneal_T)
-        if moved:
-            prev = current_score
-            current_id = node.id
-            current_state = node.state
-            current_score = node.score
-            anneal_T = max(float(anneal_min_t), anneal_T * float(anneal_alpha))
-            log.info(
-                f"ACCEPT move -> current=node{node.id} score={node.score:.6f} "
-                f"(prev={prev:.6f}) T={anneal_T:.6f}"
-            )
-        else:
-            log.info(
-                f"REJECT move node{node.id} score={node.score:.6f} "
-                f"(current={current_score:.6f}) T={anneal_T:.6f}"
-            )
-
-        # Periodic TOP-K snapshot writing
-        if write_top_k_each > 0 and (node.id % write_top_k_each == 0):
-            snap = sorted(top_list, key=lambda x: x.score)
-            for rank, bn in enumerate(snap, start=1):
-                pth = f"{base_name}_TOP_rank{rank:02d}_node{bn.id:05d}_score{bn.score:.6f}{ext}"
+        # Optional snapshots: write current best K nodes occasionally
+        if write_top_k_each > 0 and (accepted_valid % write_top_k_each == 0):
+            best_k = sorted(accepted_nodes, key=lambda n: n.score)[: max(1, top_k)]
+            for rank, bn in enumerate(best_k, start=1):
+                pth = os.path.join(
+                    nodes_dir,
+                    f"TOP_rank{rank:02d}_score{_score_key(bn.score)}_node{bn.id:05d}_parent{bn.parent_id:05d}{ext}",
+                )
                 try:
                     with open(pth, "w", encoding="utf-8") as f:
                         f.write(bn.state.svg or "")
                 except Exception:
                     pass
-            log.info(f"Wrote TOP snapshot (every {write_top_k_each} accepts)")
 
-        return True
+        if write_lineage and (accepted_valid % 10 == 0):
+            write_lineage_files(node_info)
 
-    # Initial fill
-    pump_enqueues(budget=50_000)
-
-    accepted_valid = 0
-    while True:
-        if time_up():
-            log.warning("Stopping: wall-clock limit reached.")
-            break
-        if next_task_id > max_total_tasks:
-            log.warning("Stopping: max_total_tasks reached.")
-            break
-        if accepted_valid >= max_accepts:
-            break
-
-        pump_enqueues(budget=8192)
-
-        try:
-            res: Result = result_q.get(timeout=0.2)
-        except queue.Empty:
-            if not pending_tasks and next_task_id > max_total_tasks:
-                log.warning("Stopping: task budget exhausted and no pending tasks.")
-                break
-            continue
-
-        if handle_result(res):
-            accepted_valid += 1
-            log.info(f"Accepted valid nodes: {accepted_valid}/{max_accepts} (best={best_score:.6f})")
-
-    # Final output = best-ever
-    if best_score >= INVALID_SCORE or best_state.svg is None:
+    if best_node is None or best_node.state.svg is None or best_node.score >= INVALID_SCORE:
         shutdown_all("No valid SVG produced.", terminate=True)
         raise SystemExit("No valid SVG produced.")
 
+    # Final output = best
     try:
         with open(output_svg_path, "w", encoding="utf-8") as f:
-            f.write(best_state.svg)
-        log.info(f"Final SVG written to: {output_svg_path} (best score={best_score:.6f})")
+            f.write(best_node.state.svg)
+        log.info(f"Final SVG written to: {output_svg_path} (best score={best_node.score:.6f})")
     except Exception as e:
         shutdown_all(f"Failed to write final SVG '{output_svg_path}': {e}", terminate=True)
         raise SystemExit(1)
+
+    if write_lineage:
+        write_lineage_files(node_info)
 
     shutdown_all("completed", terminate=False)

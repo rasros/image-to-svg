@@ -1,6 +1,10 @@
+**/__pycache__/
 *.png
 *.jpg
 *.gif
-.venv
-.idea
+*.svg
+.venv/
+.idea/
 *.egg-info
+output_lineage*
+output_nodes/

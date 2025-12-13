@@ -9,11 +9,6 @@ INVALID_SCORE = 1e9
 
 @dataclasses.dataclass
 class ChainState:
-    """
-    The state we refine over time.
-    - model_temperature: prompt sampling temperature for OpenAI generation
-    - stale_hits: used to bump model_temperature if proposals are near-identical
-    """
     svg: Optional[str]
     raster_data_url: Optional[str]  # rasterized svg as png data-url
     score: float
@@ -26,6 +21,7 @@ class ChainState:
 class SearchNode:
     score: float
     id: int = dataclasses.field(compare=False)
+    parent_id: int = dataclasses.field(compare=False)
     state: ChainState = dataclasses.field(compare=False)
 
 
@@ -34,14 +30,14 @@ class Task:
     task_id: int
     parent_id: int
     parent_state: ChainState
-    proposal_index: int  # just for diversity / jitter
+    worker_slot: int  # used only for diversity/jitter
 
 
 @dataclasses.dataclass
 class Result:
     task_id: int
     parent_id: int
-    proposal_index: int
+    worker_slot: int
     svg: Optional[str]
     valid: bool
     invalid_msg: Optional[str]

@@ -15,6 +15,5 @@ def pixel_diff_score(original_rgb: Image.Image, candidate_png: bytes) -> float:
 
     diff = ImageChops.difference(original_rgb, cand)
     stat = ImageStat.Stat(diff)
-    # stat.mean is per-channel mean absolute difference in [0..255]
-    mean_abs = (stat.mean[0] + stat.mean[1] + stat.mean[2]) / 3.0
+    mean_abs = (stat.mean[0] + stat.mean[1] + stat.mean[2]) / 3.0  # [0..255]
     return float(mean_abs / 255.0)
