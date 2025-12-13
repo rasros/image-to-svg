@@ -2,7 +2,7 @@ import argparse
 
 DEFAULT_MAX_ACCEPTS = 32
 DEFAULT_WORKERS = 4
-DEFAULT_MODEL_TEMP = 0.2
+DEFAULT_MODEL_TEMP = 0.6
 
 DEFAULT_MAX_TOTAL_TASKS = 10_000
 DEFAULT_MAX_WALL_SECONDS = 0  # 0 disables
@@ -11,11 +11,11 @@ DEFAULT_RESUME = True
 DEFAULT_TOP_K = 3
 DEFAULT_WRITE_LINEAGE = True
 
-# Parent selection:
-# With probability p(progress), pick a parent from the current top-K pool (elite selection).
-# p decays from START -> END as accepted_valid approaches max_accepts.
 DEFAULT_ELITE_PROB_START = 0.70
 DEFAULT_ELITE_PROB_END = 0.10
+
+# Performance: downscale images sent to OpenAI (original + rasterized SVG previews)
+DEFAULT_OPENAI_IMAGE_LONG_SIDE = 512  # 0 disables (send full-res)
 
 
 def parse_args():
@@ -57,6 +57,16 @@ def parse_args():
         type=float,
         default=DEFAULT_MODEL_TEMP,
         help=f"Base sampling temperature for SVG generation (default: {DEFAULT_MODEL_TEMP}).",
+    )
+
+    parser.add_argument(
+        "--openai-image-long-side",
+        type=int,
+        default=DEFAULT_OPENAI_IMAGE_LONG_SIDE,
+        help=(
+            "Downscale images sent to OpenAI so their long side is this many pixels (default: 512). "
+            "Set to 0 to disable and send full-res."
+        ),
     )
 
     parser.add_argument(
@@ -105,7 +115,7 @@ def parse_args():
         dest="write_lineage",
         action=argparse.BooleanOptionalAction,
         default=DEFAULT_WRITE_LINEAGE,
-        help=f"Write lineage TSV/DOT files (default: {DEFAULT_WRITE_LINEAGE}).",
+        help=f"Write lineage CSV files (default: {DEFAULT_WRITE_LINEAGE}).",
     )
 
     parser.add_argument(
@@ -129,6 +139,9 @@ def parse_args():
         raise SystemExit("--max-total-tasks must be > 0")
     if args.top_k <= 0:
         raise SystemExit("--top-k must be > 0")
+
+    if args.openai_image_long_side < 0:
+        raise SystemExit("--openai-image-long-side must be >= 0")
 
     if not (0.0 <= args.elite_prob_start <= 1.0):
         raise SystemExit("--elite-prob-start must be in [0, 1]")

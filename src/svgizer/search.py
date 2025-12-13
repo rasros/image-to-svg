@@ -19,7 +19,12 @@ from PIL import Image
 
 from svgizer.models import ChainState, SearchNode, Task, Result, INVALID_SCORE
 from svgizer.diff_scores import pixel_diff_score
-from svgizer.openai_iface import summarize_changes, call_openai_for_svg, extract_svg_fragment, is_valid_svg
+from svgizer.openai_iface import (
+    summarize_changes,
+    call_openai_for_svg,
+    extract_svg_fragment,
+    is_valid_svg,
+)
 
 TEMP_STEP = 0.3
 MAX_TEMP = 1.6
@@ -54,8 +59,51 @@ def png_bytes_to_data_url(png_bytes: bytes) -> str:
     return f"data:image/png;base64,{b64}"
 
 
-def rasterize_svg_to_png_bytes(svg_text: str) -> bytes:
-    return cairosvg.svg2png(bytestring=svg_text.encode("utf-8"))
+def downscale_png_bytes(png_bytes: bytes, long_side: int) -> bytes:
+    """
+    Downscale an RGB image (encoded as PNG bytes) so the long side == long_side.
+    If long_side <= 0, returns input unchanged.
+    If the image is already <= long_side, returns a re-encoded PNG (still valid).
+    """
+    if long_side <= 0:
+        return png_bytes
+
+    im = Image.open(io.BytesIO(png_bytes)).convert("RGB")
+    w, h = im.size
+
+    if max(w, h) <= long_side:
+        out = io.BytesIO()
+        im.save(out, format="PNG")
+        return out.getvalue()
+
+    if w >= h:
+        new_w = long_side
+        new_h = int(round(h * (long_side / float(w))))
+    else:
+        new_h = long_side
+        new_w = int(round(w * (long_side / float(h))))
+
+    new_w = max(1, new_w)
+    new_h = max(1, new_h)
+
+    im2 = im.resize((new_w, new_h), resample=Image.BILINEAR)
+    out = io.BytesIO()
+    im2.save(out, format="PNG")
+    return out.getvalue()
+
+
+def rasterize_svg_to_png_bytes(svg_text: str, *, out_w: int, out_h: int) -> bytes:
+    """
+    Safeguard: always rasterize to the *exact* target pixel dimensions.
+    This prevents size drift due to SVG width/height/viewBox differences.
+    """
+    if out_w <= 0 or out_h <= 0:
+        raise ValueError(f"Invalid raster target size: {out_w}x{out_h}")
+    return cairosvg.svg2png(
+        bytestring=svg_text.encode("utf-8"),
+        output_width=out_w,
+        output_height=out_h,
+    )
 
 
 def is_stale(prev_svg: Optional[str], new_svg: str) -> bool:
@@ -82,11 +130,27 @@ def _score_key(score: float) -> str:
     return f"{score:012.6f}"
 
 
+def _elite_prob(progress01: float, p_start: float, p_end: float) -> float:
+    progress01 = max(0.0, min(1.0, progress01))
+    return float(p_start + (p_end - p_start) * progress01)
+
+
+def _choose_from_top_k_weighted(best_k: List[SearchNode]) -> int:
+    if not best_k:
+        return 0
+    weights = [1.0 / (i + 1.0) for i in range(len(best_k))]
+    node = random.choices(best_k, weights=weights, k=1)[0]
+    return node.id
+
+
 def worker_loop(
     task_q: mp.Queue,
     result_q: mp.Queue,
-    original_data_url: str,
+    openai_original_data_url: str,
     original_png_bytes: bytes,
+    original_w: int,
+    original_h: int,
+    openai_image_long_side: int,
     log_level: str,
 ):
     setup_logger(log_level)
@@ -110,14 +174,17 @@ def worker_loop(
 
         temperature = min(MAX_TEMP, max(0.0, parent.model_temperature + (task.worker_slot * 0.07)))
 
+        # Use downscaled preview if available; fallback to full-res data-url.
+        parent_preview_data_url = getattr(parent, "raster_preview_data_url", None) or parent.raster_data_url
+
         change_summary = None
-        if parent.svg and parent.raster_data_url:
+        if parent.svg:
             try:
                 change_summary = summarize_changes(
                     client=client,
-                    original_data_url=original_data_url,
+                    original_data_url=openai_original_data_url,
                     iter_index=task.parent_id,
-                    rasterized_svg_data_url=parent.raster_data_url,
+                    rasterized_svg_data_url=parent_preview_data_url,
                 )
             except Exception as e:
                 log.debug(f"Summary failed task={task.task_id}: {e}")
@@ -125,12 +192,12 @@ def worker_loop(
         try:
             raw = call_openai_for_svg(
                 client=client,
-                original_data_url=original_data_url,
+                original_data_url=openai_original_data_url,
                 iter_index=task.parent_id,
                 temperature=temperature,
                 svg_prev=parent.svg,
                 svg_prev_invalid_msg=parent.invalid_msg,
-                rasterized_svg_data_url=parent.raster_data_url,
+                rasterized_svg_data_url=parent_preview_data_url,
                 change_summary=change_summary,
                 diversity_hint=f"parent={task.parent_id} worker={task.worker_slot}",
             )
@@ -170,8 +237,12 @@ def worker_loop(
             )
             continue
 
+        # Rasterize with strict size safeguard (full-res for scoring).
         try:
-            png = rasterize_svg_to_png_bytes(svg)
+            png = rasterize_svg_to_png_bytes(svg, out_w=original_w, out_h=original_h)
+            im = Image.open(io.BytesIO(png))
+            if im.size != (original_w, original_h):
+                raise RuntimeError(f"Rasterized PNG wrong size {im.size}, expected {(original_w, original_h)}")
             score = pixel_diff_score(original_rgb, png)
         except Exception as e:
             result_q.put(
@@ -206,12 +277,21 @@ def worker_loop(
         )
 
 
+def _make_preview_data_url(full_png: bytes, openai_image_long_side: int) -> str:
+    # If downscaling is disabled, preview is the full image.
+    preview_png = downscale_png_bytes(full_png, openai_image_long_side)
+    return png_bytes_to_data_url(preview_png)
+
+
 def _load_resume_nodes(
     nodes_dir: str,
     base_name: str,
     ext: str,
     log: logging.Logger,
     base_model_temperature: float,
+    original_w: int,
+    original_h: int,
+    openai_image_long_side: int,
 ) -> Tuple[List[SearchNode], Optional[SearchNode], int]:
     accepted: List[SearchNode] = []
     best_seen: Optional[SearchNode] = None
@@ -253,8 +333,10 @@ def _load_resume_nodes(
             try:
                 with open(path, "r", encoding="utf-8") as f:
                     svg = f.read()
-                png = rasterize_svg_to_png_bytes(svg)
-                raster_data_url = png_bytes_to_data_url(png)
+
+                full_png = rasterize_svg_to_png_bytes(svg, out_w=original_w, out_h=original_h)
+                raster_data_url = png_bytes_to_data_url(full_png)
+                raster_preview_data_url = _make_preview_data_url(full_png, openai_image_long_side)
             except Exception as e:
                 log.warning(f"Resume: failed to load {path}: {e}")
                 continue
@@ -262,6 +344,7 @@ def _load_resume_nodes(
             state = ChainState(
                 svg=svg,
                 raster_data_url=raster_data_url,
+                raster_preview_data_url=raster_preview_data_url,
                 score=score,
                 model_temperature=base_model_temperature,
                 stale_hits=0,
@@ -283,6 +366,10 @@ def _load_seed_svg(
     original_rgb: Image.Image,
     base_model_temperature: float,
     log: logging.Logger,
+    *,
+    original_w: int,
+    original_h: int,
+    openai_image_long_side: int,
 ) -> SearchNode:
     if not os.path.isfile(seed_svg_path):
         raise SystemExit(f"--seed-svg file does not exist: {seed_svg_path}")
@@ -295,9 +382,10 @@ def _load_seed_svg(
         raise SystemExit(f"--seed-svg is not a valid SVG: {err}")
 
     try:
-        png = rasterize_svg_to_png_bytes(svg_text)
-        score = pixel_diff_score(original_rgb, png)
-        raster_data_url = png_bytes_to_data_url(png)
+        full_png = rasterize_svg_to_png_bytes(svg_text, out_w=original_w, out_h=original_h)
+        score = pixel_diff_score(original_rgb, full_png)
+        raster_data_url = png_bytes_to_data_url(full_png)
+        raster_preview_data_url = _make_preview_data_url(full_png, openai_image_long_side)
     except Exception as e:
         raise SystemExit(f"--seed-svg could not be rasterized/scored: {e}")
 
@@ -306,30 +394,13 @@ def _load_seed_svg(
     state = ChainState(
         svg=svg_text,
         raster_data_url=raster_data_url,
+        raster_preview_data_url=raster_preview_data_url,
         score=score,
         model_temperature=base_model_temperature,
         stale_hits=0,
         invalid_msg=None,
     )
     return SearchNode(score=score, id=1, parent_id=0, state=state)
-
-
-def _elite_prob(progress01: float, p_start: float, p_end: float) -> float:
-    # progress01 in [0,1]; probability decays from start -> end as progress increases
-    progress01 = max(0.0, min(1.0, progress01))
-    return float(p_start + (p_end - p_start) * progress01)
-
-
-def _choose_from_top_k_weighted(best_k: List[SearchNode]) -> int:
-    """
-    Weighted selection favoring better ranks.
-    weights: 1/(rank+1)
-    """
-    if not best_k:
-        return 0
-    weights = [1.0 / (i + 1.0) for i in range(len(best_k))]
-    node = random.choices(best_k, weights=weights, k=1)[0]
-    return node.id
 
 
 def run_search(
@@ -339,6 +410,7 @@ def run_search(
     max_accepts: int,
     workers: int,
     base_model_temperature: float,
+    openai_image_long_side: int,
     max_total_tasks: int,
     max_wall_seconds: Optional[float],
     resume: bool,
@@ -356,13 +428,25 @@ def run_search(
     if not os.path.isfile(image_path):
         raise SystemExit(f"Input image '{image_path}' does not exist.")
 
-    original_data_url = encode_image_to_data_url(image_path)
+    # Load original full-res for scoring + strict raster target size
     original_img = Image.open(image_path).convert("RGB")
+    original_w, original_h = original_img.size
+    if original_w <= 0 or original_h <= 0:
+        raise SystemExit(f"Invalid input image size: {original_w}x{original_h}")
 
-    original_rgb = original_img
+    # Full-res PNG bytes for workers
     buf = io.BytesIO()
     original_img.save(buf, format="PNG")
     original_png_bytes = buf.getvalue()
+
+    # Downscaled data-url for OpenAI (performance)
+    if openai_image_long_side and openai_image_long_side > 0:
+        model_png_bytes = downscale_png_bytes(original_png_bytes, openai_image_long_side)
+        openai_original_data_url = png_bytes_to_data_url(model_png_bytes)
+    else:
+        openai_original_data_url = encode_image_to_data_url(image_path)
+
+    original_rgb = original_img
 
     base_name, ext = os.path.splitext(output_svg_path)
     if not ext:
@@ -372,8 +456,7 @@ def run_search(
     nodes_dir = os.path.join(out_dir, os.path.basename(base_name) + "_nodes")
     os.makedirs(nodes_dir, exist_ok=True)
 
-    lineage_tsv_path = os.path.join(out_dir, os.path.basename(base_name) + "_lineage.tsv")
-    lineage_dot_path = os.path.join(out_dir, os.path.basename(base_name) + "_lineage.dot")
+    lineage_csv_path = os.path.join(out_dir, os.path.basename(base_name) + "_lineage.csv")
 
     start_time = time.monotonic()
 
@@ -388,7 +471,16 @@ def run_search(
     for _ in range(max(1, workers)):
         p = ctx.Process(
             target=worker_loop,
-            args=(task_q, result_q, original_data_url, original_png_bytes, log_level),
+            args=(
+                task_q,
+                result_q,
+                openai_original_data_url,
+                original_png_bytes,
+                original_w,
+                original_h,
+                openai_image_long_side,
+                log_level,
+            ),
             daemon=True,
         )
         p.start()
@@ -417,27 +509,19 @@ def run_search(
         if not write_lineage:
             return
         try:
-            with open(lineage_tsv_path, "w", encoding="utf-8") as f:
-                f.write("node_id\tparent_id\tscore\tpath\n")
+            with open(lineage_csv_path, "w", encoding="utf-8") as csv_file:
+                csv_file.write("node_id,parent_id,score,path\n")
                 for nid in sorted(node_info.keys()):
                     pid, sc, pth = node_info[nid]
-                    f.write(f"{nid}\t{pid}\t{sc:.6f}\t{pth}\n")
+                    csv_file.write(f"{nid},{pid},{sc:.6f},{pth}\n")
 
-            with open(lineage_dot_path, "w", encoding="utf-8") as f:
-                f.write("digraph lineage {\n")
-                f.write('  rankdir="LR";\n')
-                for nid in sorted(node_info.keys()):
-                    pid, sc, _ = node_info[nid]
-                    f.write(f'  n{nid} [label="{nid}\\n{sc:.6f}"];\n')
-                    if pid != 0:
-                        f.write(f"  n{pid} -> n{nid};\n")
-                f.write("}\n")
         except Exception as e:
             log.warning(f"Failed writing lineage files: {e}")
 
     root_state = ChainState(
         svg=None,
         raster_data_url=None,
+        raster_preview_data_url=None,
         score=INVALID_SCORE,
         model_temperature=base_model_temperature,
         stale_hits=0,
@@ -451,7 +535,6 @@ def run_search(
     best_node: Optional[SearchNode] = None
     next_node_id = 0
 
-    # Track top-K elites for parent selection
     best_k: List[SearchNode] = []
 
     def _recompute_best_k() -> None:
@@ -462,7 +545,16 @@ def run_search(
         best_k = sorted(accepted_nodes, key=lambda n: n.score)[: max(1, top_k)]
 
     if resume:
-        prior_nodes, prior_best, max_id = _load_resume_nodes(nodes_dir, base_name, ext, log, base_model_temperature)
+        prior_nodes, prior_best, max_id = _load_resume_nodes(
+            nodes_dir,
+            base_name,
+            ext,
+            log,
+            base_model_temperature,
+            original_w,
+            original_h,
+            openai_image_long_side,
+        )
         if prior_nodes:
             accepted_nodes.extend(prior_nodes)
             best_node = prior_best
@@ -472,7 +564,15 @@ def run_search(
             _recompute_best_k()
 
     if seed_svg_path:
-        seed = _load_seed_svg(seed_svg_path, original_rgb, base_model_temperature, log)
+        seed = _load_seed_svg(
+            seed_svg_path,
+            original_rgb,
+            base_model_temperature,
+            log,
+            original_w=original_w,
+            original_h=original_h,
+            openai_image_long_side=openai_image_long_side,
+        )
         next_node_id += 1
         seed = SearchNode(score=seed.score, id=next_node_id, parent_id=0, state=seed.state)
         accepted_nodes.append(seed)
@@ -491,20 +591,15 @@ def run_search(
         _recompute_best_k()
 
     def choose_parent_id(accepted_valid: int) -> int:
-        # No pool yet -> root
         if not accepted_nodes and best_node is None:
             return 0
 
-        progress = 0.0
-        if max_accepts > 0:
-            progress = accepted_valid / float(max_accepts)
+        progress = accepted_valid / float(max_accepts) if max_accepts > 0 else 0.0
         p_elite = _elite_prob(progress, elite_prob_start, elite_prob_end)
 
-        # Elite selection decays over time (more exploitation near the end).
         if best_k and random.random() < p_elite:
             return _choose_from_top_k_weighted(best_k)
 
-        # Otherwise: exploit best-so-far if available, else fallback to best-k(0)
         if best_node is not None:
             return best_node.id
         return best_k[0].id if best_k else 0
@@ -590,9 +685,14 @@ def run_search(
         parent_state = node_states.get(res.parent_id, root_state)
         next_temp, stale_hits = next_lineage_temp(res.parent_id, parent_state.svg, res.svg)
 
+        full_png = res.raster_png
+        raster_data_url = png_bytes_to_data_url(full_png)
+        raster_preview_data_url = _make_preview_data_url(full_png, openai_image_long_side)
+
         state = ChainState(
             svg=res.svg,
-            raster_data_url=png_bytes_to_data_url(res.raster_png),
+            raster_data_url=raster_data_url,
+            raster_preview_data_url=raster_preview_data_url,
             score=res.score,
             model_temperature=next_temp,
             stale_hits=stale_hits,
@@ -613,8 +713,6 @@ def run_search(
             log.info(f"NEW BEST node={node.id} score={node.score:.6f}")
 
         accepted_valid += 1
-
-        # Maintain elites
         _recompute_best_k()
 
         if write_lineage and (accepted_valid % 10 == 0):

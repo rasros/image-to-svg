@@ -36,11 +36,14 @@ def summarize_changes(
     rasterized_svg_data_url: Optional[str],
 ) -> str:
     lines = [
-        "You compare an original raster image and a current SVG rendering (shown as a rasterized image).",
-        "Describe only the FEW MOST IMPORTANT changes needed to improve overall likeness.",
-        "The priority is to fix overall shapes first, then position of items, and then details like arrows, icons and text.",
-        "Ignore noise and artifacts typical of AI-generated images (random speckles, smeared or melting details, ghost edges, meaningless text blobs, watermarks).",
-        "Keep the list short (3–6 bullets). Output plain text only.",
+        "You are an SVG critique engine. Compare the Original Image (A) and the Current SVG Render (B).",
+        "Your goal is to guide the SVG generator to make B look like A.",
+        "Identify the 3-5 most distinct GEOMETRIC errors. Be specific about:",
+        "1. Missing elements (e.g., 'The blue background circle is missing').",
+        "2. Shape mismatch (e.g., 'The main rectangle is too wide', 'The corners should be rounded').",
+        "3. Alignment issues (e.g., 'The icon is too far to the left').",
+        "4. Color discrepancies (e.g., 'The green is too pale').",
+        "Output ONLY the bullet points. Do not include introductory text.",
         f"Iteration #{iter_index}.",
     ]
 

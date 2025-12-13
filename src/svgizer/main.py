@@ -19,6 +19,7 @@ def main():
         max_accepts=args.max_accepts,
         workers=args.workers,
         base_model_temperature=args.model_temp,
+        openai_image_long_side=args.openai_image_long_side,
         max_total_tasks=args.max_total_tasks,
         max_wall_seconds=args.max_wall_seconds,
         resume=args.resume,

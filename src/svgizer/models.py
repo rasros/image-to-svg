@@ -10,7 +10,8 @@ INVALID_SCORE = 1e9
 @dataclasses.dataclass
 class ChainState:
     svg: Optional[str]
-    raster_data_url: Optional[str]  # rasterized svg as png data-url
+    raster_data_url: Optional[str]          # FULL-res (for lineage / inspection)
+    raster_preview_data_url: Optional[str]  # DOWNSCALED (for OpenAI)
     score: float
     model_temperature: float
     stale_hits: int
