@@ -27,6 +27,15 @@ def parse_args():
     )
 
     parser.add_argument(
+        "--seed-svg",
+        default=None,
+        help=(
+            "Path to an SVG file to seed the pool / resume from. "
+            "If provided, it is rasterized and scored against the input image and becomes the initial best node."
+        ),
+    )
+
+    parser.add_argument(
         "--max-accepts",
         type=int,
         default=DEFAULT_MAX_ACCEPTS,

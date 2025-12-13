@@ -15,6 +15,7 @@ def main():
     run_search(
         image_path=args.image,
         output_svg_path=args.output,
+        seed_svg_path=args.seed_svg,
         max_accepts=args.max_accepts,
         workers=args.workers,
         base_model_temperature=args.model_temp,
