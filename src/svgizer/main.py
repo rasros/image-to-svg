@@ -20,12 +20,8 @@ def main():
         workers=args.workers,
         base_model_temperature=args.model_temp,
         openai_image_long_side=args.openai_image_long_side,
-        max_total_tasks=args.max_total_tasks,
         max_wall_seconds=args.max_wall_seconds,
         resume=args.resume,
-        top_k=args.top_k,
-        elite_prob_start=args.elite_prob_start,
-        elite_prob_end=args.elite_prob_end,
         write_lineage=args.write_lineage,
         log_level=args.log_level,
     )

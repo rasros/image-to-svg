@@ -10,7 +10,12 @@ from typing import Dict, List, Optional, Tuple
 from PIL import Image
 
 from svgizer.diff_scores import pixel_diff_score, get_scoring_reference
-from svgizer.image_utils import downscale_png_bytes, png_bytes_to_data_url, rasterize_svg_to_png_bytes, make_preview_data_url
+from svgizer.image_utils import (
+    downscale_png_bytes,
+    png_bytes_to_data_url,
+    rasterize_svg_to_png_bytes,
+    make_preview_data_url,
+)
 from svgizer.models import ChainState, SearchNode, Task, Result, INVALID_SCORE
 from svgizer.openai_iface import is_valid_svg
 from svgizer.storage import load_resume_nodes, save_node_to_disk, write_lineage_csv
@@ -21,6 +26,12 @@ TEMP_STEP = 0.3
 MAX_TEMP = 1.6
 STALE_HITS_BEFORE_BUMP = 1
 
+# Internal (non-CLI) safety / tuning constants
+MAX_TOTAL_TASKS = 10_000
+TOP_K = 3
+ELITE_PROB_START = 0.70
+ELITE_PROB_END = 0.10
+
 
 def run_search(
     image_path: str,
@@ -30,12 +41,8 @@ def run_search(
     workers: int,
     base_model_temperature: float,
     openai_image_long_side: int,
-    max_total_tasks: int,
     max_wall_seconds: Optional[float],
     resume: bool,
-    top_k: int,
-    elite_prob_start: float,
-    elite_prob_end: float,
     write_lineage: bool,
     log_level: str,
 ) -> None:
@@ -54,7 +61,6 @@ def run_search(
     original_img.save(buf, format="PNG")
     original_png_bytes = buf.getvalue()
 
-    # Always give OpenAI a PNG data URL; optionally downscale first.
     model_png_bytes = (
         downscale_png_bytes(original_png_bytes, openai_image_long_side)
         if openai_image_long_side and openai_image_long_side > 0
@@ -82,8 +88,14 @@ def run_search(
         p = ctx.Process(
             target=worker_loop,
             args=(
-                task_q, result_q, openai_original_data_url, original_png_bytes,
-                original_w, original_h, openai_image_long_side, log_level
+                task_q,
+                result_q,
+                openai_original_data_url,
+                original_png_bytes,
+                original_w,
+                original_h,
+                openai_image_long_side,
+                log_level,
             ),
             daemon=True,
         )
@@ -91,7 +103,9 @@ def run_search(
         procs.append(p)
 
     def shutdown_all(reason: str, terminate: bool = True) -> None:
-        (log.error if terminate else log.info)(f"{'Canceling run' if terminate else 'Shutting down'}: {reason}")
+        (log.error if terminate else log.info)(
+            f"{'Canceling run' if terminate else 'Shutting down'}: {reason}"
+        )
         for _ in procs:
             try:
                 task_q.put_nowait(None)
@@ -119,8 +133,14 @@ def run_search(
 
     if resume:
         prior_nodes, prior_best, max_id = load_resume_nodes(
-            nodes_dir, base_name, ext, log, base_model_temperature,
-            original_w, original_h, openai_image_long_side
+            nodes_dir,
+            base_name,
+            ext,
+            log,
+            base_model_temperature,
+            original_w,
+            original_h,
+            openai_image_long_side,
         )
         if prior_nodes:
             accepted_nodes.extend(prior_nodes)
@@ -128,7 +148,7 @@ def run_search(
             next_node_id = max_id
             for n in prior_nodes:
                 node_states[n.id] = n.state
-            best_k = sorted(accepted_nodes, key=lambda n: n.score)[: max(1, top_k)]
+            best_k = sorted(accepted_nodes, key=lambda n: n.score)[: max(1, TOP_K)]
 
     if seed_svg_path:
         try:
@@ -138,13 +158,19 @@ def run_search(
             if not valid:
                 raise ValueError(err)
 
-            full_png = rasterize_svg_to_png_bytes(seed_svg, out_w=original_w, out_h=original_h)
-            seed_score = pixel_diff_score(get_scoring_reference(original_img), full_png)
+            full_png = rasterize_svg_to_png_bytes(
+                seed_svg, out_w=original_w, out_h=original_h
+            )
+            seed_score = pixel_diff_score(
+                get_scoring_reference(original_img), full_png
+            )
 
             seed_state = ChainState(
                 svg=seed_svg,
                 raster_data_url=png_bytes_to_data_url(full_png) if write_lineage else None,
-                raster_preview_data_url=make_preview_data_url(full_png, openai_image_long_side),
+                raster_preview_data_url=make_preview_data_url(
+                    full_png, openai_image_long_side
+                ),
                 score=seed_score,
                 model_temperature=base_model_temperature,
                 stale_hits=0,
@@ -152,16 +178,23 @@ def run_search(
                 change_summary=None,
             )
             next_node_id += 1
-            seed_node = SearchNode(score=seed_score, id=next_node_id, parent_id=0, state=seed_state)
+            seed_node = SearchNode(
+                score=seed_score, id=next_node_id, parent_id=0, state=seed_state
+            )
             accepted_nodes.append(seed_node)
             node_states[seed_node.id] = seed_state
 
             iter_path = save_node_to_disk(nodes_dir, seed_node, ext)
-            node_info[seed_node.id] = (0, seed_score, iter_path, seed_state.change_summary)
+            node_info[seed_node.id] = (
+                0,
+                seed_score,
+                iter_path,
+                seed_state.change_summary,
+            )
 
             if best_node is None or seed_score < best_node.score:
                 best_node = seed_node
-            best_k = sorted(accepted_nodes, key=lambda n: n.score)[: max(1, top_k)]
+            best_k = sorted(accepted_nodes, key=lambda n: n.score)[: max(1, TOP_K)]
         except Exception as e:
             raise SystemExit(f"--seed-svg error: {e}")
 
@@ -174,16 +207,18 @@ def run_search(
         if (
             (max_wall_seconds and (time.monotonic() - start_time) >= max_wall_seconds)
             or (accepted_valid >= max_accepts)
-            or (tasks_completed >= max_total_tasks)
-            or (in_flight == 0 and next_task_id > max_total_tasks)
+            or (tasks_completed >= MAX_TOTAL_TASKS)
+            or (in_flight == 0 and next_task_id > MAX_TOTAL_TASKS)
         ):
             break
 
-        while in_flight < workers and next_task_id <= max_total_tasks:
+        while in_flight < workers and next_task_id <= MAX_TOTAL_TASKS:
             pid = 0
             if accepted_nodes:
                 progress = accepted_valid / float(max_accepts) if max_accepts > 0 else 0.0
-                if best_k and random.random() < calculate_elite_prob(progress, elite_prob_start, elite_prob_end):
+                if best_k and random.random() < calculate_elite_prob(
+                    progress, ELITE_PROB_START, ELITE_PROB_END
+                ):
                     pid = choose_from_top_k_weighted(best_k)
                 elif best_node:
                     pid = best_node.id
@@ -227,30 +262,47 @@ def run_search(
         new_state = ChainState(
             svg=res.svg,
             raster_data_url=png_bytes_to_data_url(full_png) if write_lineage else None,
-            raster_preview_data_url=make_preview_data_url(full_png, openai_image_long_side),
+            raster_preview_data_url=make_preview_data_url(
+                full_png, openai_image_long_side
+            ),
             score=res.score,
             model_temperature=next_temp,
             stale_hits=stale_hits,
             invalid_msg=None,
             change_summary=res.change_summary,
         )
-        node = SearchNode(score=res.score, id=next_node_id, parent_id=res.parent_id, state=new_state)
+        node = SearchNode(
+            score=res.score,
+            id=next_node_id,
+            parent_id=res.parent_id,
+            state=new_state,
+        )
         accepted_nodes.append(node)
         node_states[node.id] = new_state
         accepted_valid += 1
 
         iter_path = save_node_to_disk(nodes_dir, node, ext)
-        node_info[node.id] = (node.parent_id, node.score, iter_path, new_state.change_summary)
+        node_info[node.id] = (
+            node.parent_id,
+            node.score,
+            iter_path,
+            new_state.change_summary,
+        )
 
         if res.change_summary:
-            one_line = " | ".join(s.strip() for s in res.change_summary.splitlines() if s.strip())
-            log.info(f"CHANGE_SUMMARY node={node.id} parent={node.parent_id} score={node.score:.6f}: {one_line}")
+            one_line = " | ".join(
+                s.strip() for s in res.change_summary.splitlines() if s.strip()
+            )
+            log.info(
+                f"CHANGE_SUMMARY node={node.id} parent={node.parent_id} "
+                f"score={node.score:.6f}: {one_line}"
+            )
 
         if best_node is None or node.score < best_node.score:
             best_node = node
             log.info(f"NEW BEST node={node.id} score={node.score:.6f}")
 
-        best_k = sorted(accepted_nodes, key=lambda n: n.score)[: max(1, top_k)]
+        best_k = sorted(accepted_nodes, key=lambda n: n.score)[: max(1, TOP_K)]
         if write_lineage and (accepted_valid % 10 == 0):
             write_lineage_csv(lineage_csv_path, node_info)
 
