@@ -5,11 +5,14 @@ import numpy as np
 import torch
 from PIL import Image, ImageChops, ImageStat
 
+
 @dataclass(frozen=True)
 class ScoreConfig:
-    target_long_side: int = 256  # DreamSim handles specific resizing implicitly via preprocess
-    w_dreamsim: float = 0.85     # Heavily weight semantic/structural layout
-    w_color: float = 0.15        # Keep a small fallback for palette accuracy
+    target_long_side: int = (
+        256  # DreamSim handles specific resizing implicitly via preprocess
+    )
+    w_dreamsim: float = 0.85  # Heavily weight semantic/structural layout
+    w_color: float = 0.15  # Keep a small fallback for palette accuracy
 
 
 _CFG = ScoreConfig()
@@ -66,6 +69,7 @@ def _lab_l1(a_rgb: Image.Image, b_rgb: Image.Image) -> float:
 @dataclass
 class ScoringReference:
     """Holds both the PIL image (for color checks) and the pre-computed GPU tensor."""
+
     image: Image.Image
     tensor: torch.Tensor
 

@@ -10,7 +10,12 @@ from PIL import Image
 from svgizer.diff_scores import pixel_diff_score, get_scoring_reference
 from svgizer.image_utils import rasterize_svg_to_png_bytes
 from svgizer.models import Result, Task, INVALID_SCORE
-from svgizer.openai_iface import summarize_changes, call_openai_for_svg, extract_svg_fragment, is_valid_svg
+from svgizer.openai_iface import (
+    summarize_changes,
+    call_openai_for_svg,
+    extract_svg_fragment,
+    is_valid_svg,
+)
 from svgizer.utils import setup_logger
 
 MAX_TEMP = 1.6
@@ -47,10 +52,14 @@ def worker_loop(
         assert isinstance(task, Task)
 
         parent = task.parent_state
-        temperature = min(MAX_TEMP, max(0.0, parent.model_temperature + (task.worker_slot * 0.07)))
+        temperature = min(
+            MAX_TEMP, max(0.0, parent.model_temperature + (task.worker_slot * 0.07))
+        )
 
         # Prefer downscaled preview; fallback to full-res data-url.
-        parent_preview_data_url = parent.raster_preview_data_url or parent.raster_data_url
+        parent_preview_data_url = (
+            parent.raster_preview_data_url or parent.raster_data_url
+        )
 
         change_summary = None
         if parent.svg:
@@ -78,23 +87,71 @@ def worker_loop(
             )
             svg = extract_svg_fragment(raw)
         except Exception as e:
-            result_q.put(Result(task.task_id, task.parent_id, task.worker_slot, None, False,
-                                f"FATAL: OpenAI call failed: {e}", None, INVALID_SCORE, temperature, change_summary))
+            result_q.put(
+                Result(
+                    task.task_id,
+                    task.parent_id,
+                    task.worker_slot,
+                    None,
+                    False,
+                    f"FATAL: OpenAI call failed: {e}",
+                    None,
+                    INVALID_SCORE,
+                    temperature,
+                    change_summary,
+                )
+            )
             continue
 
         valid, err = is_valid_svg(svg)
         if not valid:
-            result_q.put(Result(task.task_id, task.parent_id, task.worker_slot, svg, False,
-                                err, None, INVALID_SCORE, temperature, change_summary))
+            result_q.put(
+                Result(
+                    task.task_id,
+                    task.parent_id,
+                    task.worker_slot,
+                    svg,
+                    False,
+                    err,
+                    None,
+                    INVALID_SCORE,
+                    temperature,
+                    change_summary,
+                )
+            )
             continue
 
         try:
             png = rasterize_svg_to_png_bytes(svg, out_w=original_w, out_h=original_h)
             score = pixel_diff_score(scoring_ref, png)
         except Exception as e:
-            result_q.put(Result(task.task_id, task.parent_id, task.worker_slot, svg, False,
-                                f"FATAL: Rasterize/score failed: {e}", None, INVALID_SCORE, temperature, change_summary))
+            result_q.put(
+                Result(
+                    task.task_id,
+                    task.parent_id,
+                    task.worker_slot,
+                    svg,
+                    False,
+                    f"FATAL: Rasterize/score failed: {e}",
+                    None,
+                    INVALID_SCORE,
+                    temperature,
+                    change_summary,
+                )
+            )
             continue
 
-        result_q.put(Result(task.task_id, task.parent_id, task.worker_slot, svg, True,
-                            None, png, score, temperature, change_summary))
+        result_q.put(
+            Result(
+                task.task_id,
+                task.parent_id,
+                task.worker_slot,
+                svg,
+                True,
+                None,
+                png,
+                score,
+                temperature,
+                change_summary,
+            )
+        )

@@ -38,7 +38,7 @@ def summarize_changes(
         "Compare the original image (first) to the current SVG render (second).",
         "Provide 3-5 concise, actionable bullet points to make the SVG look more like the original.",
         "Highlight whatever stands out the most: structural flaws, missing parts, or color differences.",
-        "Output ONLY the bullet points."
+        "Output ONLY the bullet points.",
     ]
 
     content: List[dict] = [
@@ -56,6 +56,7 @@ def summarize_changes(
         text={"format": {"type": "text"}},
     )
     return resp.output_text
+
 
 def call_openai_for_svg(
     client: OpenAI,
@@ -82,13 +83,19 @@ def call_openai_for_svg(
         lines.append(f"Diversity hint: {diversity_hint}")
 
     if svg_prev is None:
-        lines.append("First attempt: Create a high-level structural blocking of the image using large paths and groups.")
+        lines.append(
+            "First attempt: Create a high-level structural blocking of the image using large paths and groups."
+        )
     else:
         lines.append("REFINEMENT TASK:")
-        lines.append("Refine the existing SVG groups. Do not delete groups that are already accurate.")
+        lines.append(
+            "Refine the existing SVG groups. Do not delete groups that are already accurate."
+        )
 
     if svg_prev_invalid_msg:
-        lines.append(f"CRITICAL: The previous SVG failed to parse: {svg_prev_invalid_msg}. Fix the syntax immediately.")
+        lines.append(
+            f"CRITICAL: The previous SVG failed to parse: {svg_prev_invalid_msg}. Fix the syntax immediately."
+        )
 
     if change_summary:
         lines.append("PRIORITY FIXES (from Vision Critique):")

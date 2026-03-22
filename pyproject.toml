@@ -15,6 +15,12 @@ dependencies = [
   "dreamsim>=0.1.3",
 ]
 
+[project.optional-dependencies]
+dev = [
+  "pytest",
+  "ruff",
+]
+
 [project.scripts]
 svgizer = "svgizer.main:main"
 
