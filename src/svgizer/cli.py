@@ -1,6 +1,7 @@
 import argparse
 
 from svgizer.diff import ScorerType
+from svgizer.search import StrategyType
 
 DEFAULT_MAX_ACCEPTS = 32
 DEFAULT_WORKERS = 4
@@ -28,26 +29,52 @@ def parse_args():
     # Scorer Configuration
     parser.add_argument(
         "--scorer",
-        type=str,
+        type=ScorerType,
         choices=[e.value for e in ScorerType],
         default=ScorerType.AUTO.value,
         help="Difference scoring backend (dreamsim, simple, llm, or auto).",
     )
 
+    parser.add_argument(
+        "--strategy",
+        type=StrategyType,
+        choices=[e.value for e in StrategyType],
+        default=StrategyType.GENETIC.value,
+        help="Search strategy/evolution algorithm to use.",
+    )
+
     # Search Constraints
-    parser.add_argument("--max-accepts", type=int, default=DEFAULT_MAX_ACCEPTS,
-                        help="Number of successful refinements to reach.")
-    parser.add_argument("--workers", type=int, default=DEFAULT_WORKERS,
-                        help="Number of parallel worker processes.")
-    parser.add_argument("--max-wall-seconds", type=float, default=DEFAULT_MAX_WALL_SECONDS,
-                        help="Maximum runtime in seconds (0 to disable).")
+    parser.add_argument(
+        "--max-accepts",
+        type=int,
+        default=DEFAULT_MAX_ACCEPTS,
+        help="Number of successful refinements to reach.",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=DEFAULT_WORKERS,
+        help="Number of parallel worker processes.",
+    )
+    parser.add_argument(
+        "--max-wall-seconds",
+        type=float,
+        default=DEFAULT_MAX_WALL_SECONDS,
+        help="Maximum runtime in seconds (0 to disable).",
+    )
 
     # Model Parameters
-    parser.add_argument("--model-temp", type=float, default=DEFAULT_MODEL_TEMP,
-                        help="Base LLM temperature.")
     parser.add_argument(
-        "--openai-image-long-side", type=int, default=DEFAULT_OPENAI_IMAGE_LONG_SIDE,
-        help="Downscale reference/preview images to this long-side dimension."
+        "--model-temp",
+        type=float,
+        default=DEFAULT_MODEL_TEMP,
+        help="Base LLM temperature.",
+    )
+    parser.add_argument(
+        "--openai-image-long-side",
+        type=int,
+        default=DEFAULT_OPENAI_IMAGE_LONG_SIDE,
+        help="Downscale reference/preview images to this long-side dimension.",
     )
 
     # State Management
@@ -56,17 +83,19 @@ def parse_args():
         dest="resume",
         action=argparse.BooleanOptionalAction,
         default=DEFAULT_RESUME,
-        help="Resume search from existing nodes in the output directory."
+        help="Resume search from existing nodes in the output directory.",
     )
     parser.add_argument(
         "--write-lineage",
         dest="write_lineage",
         action=argparse.BooleanOptionalAction,
         default=DEFAULT_WRITE_LINEAGE,
-        help="Write a CSV and directory of all accepted SVG nodes."
+        help="Write a CSV and directory of all accepted SVG nodes.",
     )
 
-    parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+    parser.add_argument(
+        "--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"]
+    )
 
     args = parser.parse_args()
 

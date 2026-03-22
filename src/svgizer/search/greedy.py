@@ -1,6 +1,7 @@
 from typing import List
 from svgizer.models import SearchNode, ChainState, Result
 
+
 class GreedyHillClimbingStrategy:
     """
     Simplest baseline: Always selects the single best node found so far.
@@ -8,10 +9,7 @@ class GreedyHillClimbingStrategy:
     """
 
     def __init__(
-            self,
-            patience: int = 3,
-            temp_step: float = 0.3,
-            max_temp: float = 1.6
+        self, patience: int = 3, temp_step: float = 0.3, max_temp: float = 1.6
     ):
         self.patience = patience
         self.temp_step = temp_step

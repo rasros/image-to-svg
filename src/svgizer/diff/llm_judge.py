@@ -16,10 +16,12 @@ log = logging.getLogger(__name__)
 
 TIE_BREAKER_WEIGHT = 0.01
 
+
 @dataclass
 class LLMReference:
     data_url: str
     image: Image.Image
+
 
 class LLMJudgeScorer(DiffScorer):
     """Uses a Vision LLM to score the visual difference between two images, with an L1 color fallback as a tiebreaker."""
@@ -60,8 +62,14 @@ class LLMJudgeScorer(DiffScorer):
                         "role": "user",
                         "content": [
                             {"type": "text", "text": prompt},
-                            {"type": "image_url", "image_url": {"url": reference.data_url}},
-                            {"type": "image_url", "image_url": {"url": candidate_data_url}},
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": reference.data_url},
+                            },
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": candidate_data_url},
+                            },
                         ],
                     }
                 ],
@@ -77,12 +85,16 @@ class LLMJudgeScorer(DiffScorer):
             # --- Tie Breaker Calculation (L1 LAB distance) ---
             cand_img = Image.open(io.BytesIO(candidate_png)).convert("RGB")
             if cand_img.size != reference.image.size:
-                cand_img = cand_img.resize(reference.image.size, resample=Image.BILINEAR)
+                cand_img = cand_img.resize(
+                    reference.image.size, resample=Image.BILINEAR
+                )
 
             color_score = float(max(0.0, min(1.0, lab_l1(reference.image, cand_img))))
 
             # Mix the scores
-            final_score = ((1.0 - TIE_BREAKER_WEIGHT) * llm_score) + (TIE_BREAKER_WEIGHT * color_score)
+            final_score = ((1.0 - TIE_BREAKER_WEIGHT) * llm_score) + (
+                TIE_BREAKER_WEIGHT * color_score
+            )
             return float(max(0.0, min(1.0, final_score)))
 
         except Exception as e:

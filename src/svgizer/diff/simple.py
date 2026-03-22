@@ -10,9 +10,11 @@ from .utils import lab_l1, resize_long_side
 
 log = logging.getLogger(__name__)
 
+
 @dataclass
 class SimpleReference:
     image: Image.Image
+
 
 class SimpleFallbackScorer(DiffScorer):
     """

@@ -3,17 +3,18 @@ from typing import List
 from svgizer.models import SearchNode, ChainState, Result
 from svgizer.utils import is_stale, calculate_elite_prob, choose_from_top_k_weighted
 
+
 class GeneticPoolStrategy:
     """Pool-based refinement strategy."""
 
     def __init__(
-            self,
-            top_k: int = 3,
-            temp_step: float = 0.3,
-            max_temp: float = 1.6,
-            elite_start: float = 0.70,
-            elite_end: float = 0.10,
-            stale_threshold: int = 1
+        self,
+        top_k: int = 3,
+        temp_step: float = 0.3,
+        max_temp: float = 1.6,
+        elite_start: float = 0.70,
+        elite_end: float = 0.10,
+        stale_threshold: int = 1,
     ):
         self.top_k = top_k
         self.temp_step = temp_step
@@ -31,7 +32,7 @@ class GeneticPoolStrategy:
             return 0
 
         # Sort by score (ascending)
-        best_k = sorted(nodes, key=lambda n: n.score)[:self.top_k]
+        best_k = sorted(nodes, key=lambda n: n.score)[: self.top_k]
         best_node = best_k[0]
 
         elite_prob = calculate_elite_prob(progress, self.elite_start, self.elite_end)
@@ -54,8 +55,8 @@ class GeneticPoolStrategy:
 
         return ChainState(
             svg=result.svg,
-            raster_data_url=None, # Populated by engine if lineage is on
-            raster_preview_data_url=None, # Populated by engine
+            raster_data_url=None,  # Populated by engine if lineage is on
+            raster_preview_data_url=None,  # Populated by engine
             score=result.score,
             model_temperature=next_temp,
             stale_hits=stale_hits,

@@ -1,5 +1,12 @@
-from typing import List, Protocol, Optional
-from svgizer.models import SearchNode, ChainState, Result, Task
+from enum import Enum
+from typing import List, Protocol
+from svgizer.models import SearchNode, ChainState, Result
+
+
+class StrategyType(str, Enum):
+    GENETIC = "genetic"
+    GREEDY = "greedy"
+
 
 class SearchStrategy(Protocol):
     """Protocol for the 'brains' of the search (selection and evolution)."""
@@ -13,5 +20,4 @@ class SearchStrategy(Protocol):
         ...
 
     @property
-    def top_k_count(self) -> int:
-        ...
+    def top_k_count(self) -> int: ...

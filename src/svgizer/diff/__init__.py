@@ -9,11 +9,13 @@ from .llm_judge import LLMJudgeScorer
 
 log = logging.getLogger(__name__)
 
+
 class ScorerType(str, Enum):
     AUTO = "auto"
     DREAMSIM = "dreamsim"
     SIMPLE = "simple"
     LLM = "llm"
+
 
 # Registry for mapping types to classes
 SCORER_REGISTRY: Dict[ScorerType, Type[DiffScorer]] = {
@@ -23,6 +25,7 @@ SCORER_REGISTRY: Dict[ScorerType, Type[DiffScorer]] = {
 }
 
 __all__ = ["DiffScorer", "ScoreConfig", "ScorerType", "get_scorer"]
+
 
 def get_scorer(scorer_type: ScorerType | str = ScorerType.AUTO) -> DiffScorer:
     """Factory that returns the requested scorer with lazy-loading behavior."""
@@ -38,9 +41,11 @@ def get_scorer(scorer_type: ScorerType | str = ScorerType.AUTO) -> DiffScorer:
     log.info("AUTO mode: Attempting to initialize DreamSim...")
     try:
         scorer = DreamSimScorer()
-        scorer.validate_environment() # Check if models/torch are available
+        scorer.validate_environment()  # Check if models/torch are available
         log.info("AUTO: DreamSim initialized successfully.")
         return scorer
     except Exception as e:
-        log.warning(f"AUTO: DreamSim unavailable ({e}). Falling back to SimpleFallbackScorer.")
+        log.warning(
+            f"AUTO: DreamSim unavailable ({e}). Falling back to SimpleFallbackScorer."
+        )
         return SimpleFallbackScorer()

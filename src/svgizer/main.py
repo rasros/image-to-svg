@@ -11,7 +11,9 @@ def main():
 
     # Safety check for the primary dependency
     if not os.getenv("OPENAI_API_KEY"):
-        print("CRITICAL: OPENAI_API_KEY environment variable is not set.", file=sys.stderr)
+        print(
+            "CRITICAL: OPENAI_API_KEY environment variable is not set.", file=sys.stderr
+        )
         raise SystemExit(1)
 
     # Initialize the storage adapter (Strategy-agnostic)
@@ -33,6 +35,7 @@ def main():
             max_wall_seconds=args.max_wall_seconds,
             log_level=args.log_level,
             scorer_type=args.scorer,
+            strategy=args.strategy,
         )
     except KeyboardInterrupt:
         print("\nSearch interrupted by user. Exiting safely...", file=sys.stderr)
