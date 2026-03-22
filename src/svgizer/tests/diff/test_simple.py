@@ -1,8 +1,8 @@
 import io
-
 from PIL import Image
 
-from svgizer.diff_scores import SimpleFallbackScorer
+# Updated import to match the project structure
+from svgizer.diff.simple import SimpleFallbackScorer
 
 
 def test_simple_fallback_scorer_identical():
@@ -64,3 +64,15 @@ def test_simple_fallback_scorer_handles_size_mismatch():
 
     # They are the same color, so score should still be 0.0 despite the initial size mismatch
     assert score == 0.0
+
+
+def test_simple_fallback_scorer_invalid_data_returns_max_diff():
+    """Verify that corrupt bytes return 1.0 rather than crashing."""
+    scorer = SimpleFallbackScorer(target_long_side=64)
+    img_red = Image.new("RGB", (10, 10), color="red")
+    ref = scorer.prepare_reference(img_red)
+
+    # Passing garbage bytes instead of a valid PNG
+    score = scorer.score(ref, b"not a png")
+
+    assert score == 1.0
