@@ -8,3 +8,4 @@
 *.egg-info
 output_lineage*
 output_nodes/
+/models
