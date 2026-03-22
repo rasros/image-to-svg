@@ -32,6 +32,7 @@ class MultiprocessSearchEngine:
         self.procs = []
 
     def start_workers(self, params: dict):
+        log.info(f"Starting {self.workers} worker processes...")
         for _ in range(max(1, self.workers)):
             p = self.ctx.Process(
                 target=worker_loop,
@@ -52,7 +53,10 @@ class MultiprocessSearchEngine:
         start_time = time.monotonic()
         node_states = {n.id: n.state for n in initial_nodes}
         accepted_nodes = list(initial_nodes)
-        node_info = {} # For lineage
+        node_info = {}
+
+        # Track the best score found so far
+        best_node = min(initial_nodes, key=lambda n: n.score) if initial_nodes else None
 
         next_task_id = 1
         tasks_completed = 0
@@ -60,11 +64,19 @@ class MultiprocessSearchEngine:
         in_flight = 0
         next_node_id = max((n.id for n in initial_nodes), default=0)
 
+        log.info(f"Search started. Target accepts: {max_accepts}. Initial best score: {best_node.score if best_node else 'N/A'}")
+
         try:
             while True:
                 # 1. Termination Checks
-                if (max_wall_seconds and (time.monotonic() - start_time) >= max_wall_seconds) or \
-                        (accepted_count >= max_accepts) or (tasks_completed >= self.max_total_tasks):
+                if (max_wall_seconds and (time.monotonic() - start_time) >= max_wall_seconds):
+                    log.warning("Time limit reached. Shutting down...")
+                    break
+                if (accepted_count >= max_accepts):
+                    log.info(f"Target of {max_accepts} accepts reached.")
+                    break
+                if (tasks_completed >= self.max_total_tasks):
+                    log.warning("Max task limit reached.")
                     break
 
                 # 2. Feeding Tasks
@@ -87,13 +99,15 @@ class MultiprocessSearchEngine:
                 in_flight -= 1
                 tasks_completed += 1
 
-                if not res.valid: continue
+                if not res.valid:
+                    log.debug(f"Task {res.task_id} failed: {res.invalid_msg}")
+                    continue
 
                 # 4. Evolution via Strategy
                 next_node_id += 1
                 new_state = self.strategy.create_new_state(node_states[res.parent_id], res)
 
-                # Hydrate UI/Preview data (Engine responsibility)
+                # Hydrate UI/Preview data
                 if self.storage.write_lineage_enabled:
                     new_state.raster_data_url = png_bytes_to_data_url(res.raster_png)
                 new_state.raster_preview_data_url = make_preview_data_url(
@@ -106,7 +120,25 @@ class MultiprocessSearchEngine:
                 node_states[new_node.id] = new_state
                 accepted_count += 1
 
-                # Save & Log
+                # Check for New Best
+                is_new_best = False
+                if best_node is None or new_node.score < best_node.score:
+                    best_node = new_node
+                    is_new_best = True
+
+                # REPORT PROGRESS
+                status = "NEW BEST" if is_new_best else "ACCEPTED"
+                log.info(
+                    f"[{status}] node={new_node.id} parent={res.parent_id} "
+                    f"score={new_node.score:.6f} (Total: {accepted_count}/{max_accepts})"
+                )
+
+                if res.change_summary:
+                    # Log a snippet of the vision critique
+                    summary_snippet = res.change_summary.replace('\n', ' ')[:80]
+                    log.info(f"  Critique: {summary_snippet}...")
+
+                # Save & Lineage
                 iter_path = self.storage.save_node(new_node)
                 node_info[new_node.id] = (res.parent_id, res.score, iter_path, res.change_summary)
 
@@ -116,10 +148,11 @@ class MultiprocessSearchEngine:
         finally:
             self._shutdown()
 
-        return min(accepted_nodes, key=lambda n: n.score)
+        return best_node
 
     def _shutdown(self):
+        log.info("Cleaning up worker processes...")
         for _ in self.procs:
             try: self.task_q.put_nowait(None)
             except: pass
-        for p in self.procs: p.join(timeout=1.0)
+        for p in self.procs: p.join(timeout=2.0)
