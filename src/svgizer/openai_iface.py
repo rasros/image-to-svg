@@ -35,23 +35,10 @@ def summarize_changes(
     rasterized_svg_data_url: Optional[str],
 ) -> str:
     lines = [
-        "You are a Senior SVG QA Engineer. Compare Original (A) and current SVG Render (B).",
-        "Your goal: Provide actionable geometric feedback to minimize the perceptual distance.",
-        "",
-        "### STEP 1: QUADRANT ANALYSIS",
-        "Mentally divide the image into a 2x2 grid (Top-Left, Top-Right, Bottom-Left, Bottom-Right).",
-        "Identify which quadrant has the most 'broken' geometry or incorrect color fill.",
-        "",
-        "### STEP 2: GROUP IDENTIFICATION",
-        "Look at the SVG code (if provided in context later) or the render.",
-        "Reference specific elements by their logical names (e.g., 'the background group', 'the central icon', 'the shadow path').",
-        "",
-        "### STEP 3: OUTPUT REQUIREMENTS",
-        "- Provide 3-5 concise bullet points.",
-        "- Be spatially specific (e.g., 'In the Top-Right, the border-radius is too sharp').",
-        "- Identify if a group is missing entirely.",
-        "- Output ONLY the bullet points. No intro or outro.",
-        f"Iteration Context: #{iter_index}.",
+        "Compare the original image (first) to the current SVG render (second).",
+        "Provide 3-5 concise, actionable bullet points to make the SVG look more like the original.",
+        "Highlight whatever stands out the most: structural flaws, missing parts, or color differences.",
+        "Output ONLY the bullet points."
     ]
 
     content: List[dict] = [
@@ -65,11 +52,10 @@ def summarize_changes(
     resp = client.responses.create(
         model=MODEL_NAME,
         input=[{"role": "user", "content": content}],
-        temperature=0.2,
+        temperature=1.2,
         text={"format": {"type": "text"}},
     )
     return resp.output_text
-
 
 def call_openai_for_svg(
     client: OpenAI,
