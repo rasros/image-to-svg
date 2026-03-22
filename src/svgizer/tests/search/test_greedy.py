@@ -16,9 +16,10 @@ def test_select_parent_always_picks_best(strategy):
         SearchNode(score=0.5, id=3, parent_id=0, state=None),
     ]
 
-    selected_id = strategy.select_parent(nodes, progress=0.5)
+    selected_id, secondary = strategy.select_parent(nodes, progress=0.5)
 
     assert selected_id == 2
+    assert secondary is None
 
 
 def test_create_new_state_resets_staleness_on_improvement(strategy):

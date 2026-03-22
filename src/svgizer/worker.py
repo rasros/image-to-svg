@@ -13,6 +13,7 @@ from svgizer.models import Result, Task, INVALID_SCORE
 from svgizer.openai_iface import (
     summarize_changes,
     call_openai_for_svg,
+    call_openai_for_crossover,
     extract_svg_fragment,
     is_valid_svg,
 )
@@ -58,53 +59,88 @@ def worker_loop(
             MAX_TEMP, max(0.0, parent.model_temperature + (task.worker_slot * 0.07))
         )
 
-        # Prefer downscaled preview; fallback to full-res data-url.
-        parent_preview_data_url = (
-            parent.raster_preview_data_url or parent.raster_data_url
+        # Crossover Branch vs Refinement Branch
+        is_crossover = (
+            task.secondary_parent_state is not None
+            and task.secondary_parent_state.svg is not None
         )
-
         change_summary = None
-        if parent.svg:
+
+        if is_crossover:
             try:
-                change_summary = summarize_changes(
+                raw = call_openai_for_crossover(
+                    client=client,
+                    original_data_url=openai_original_data_url,
+                    temperature=temperature,
+                    svg_a=parent.svg,
+                    svg_b=task.secondary_parent_state.svg,
+                )
+                svg = extract_svg_fragment(raw)
+            except Exception as e:
+                result_q.put(
+                    Result(
+                        task.task_id,
+                        task.parent_id,
+                        task.worker_slot,
+                        None,
+                        False,
+                        f"FATAL: OpenAI Crossover call failed: {e}",
+                        None,
+                        INVALID_SCORE,
+                        temperature,
+                        None,
+                        secondary_parent_id=task.secondary_parent_id,
+                    )
+                )
+                continue
+        else:
+            # Standard single-parent refinement
+            parent_preview_data_url = (
+                parent.raster_preview_data_url or parent.raster_data_url
+            )
+
+            if parent.svg:
+                try:
+                    change_summary = summarize_changes(
+                        client=client,
+                        original_data_url=openai_original_data_url,
+                        iter_index=task.parent_id,
+                        rasterized_svg_data_url=parent_preview_data_url,
+                    )
+                except Exception as e:
+                    log.debug(f"Summary failed task={task.task_id}: {e}")
+
+            try:
+                raw = call_openai_for_svg(
                     client=client,
                     original_data_url=openai_original_data_url,
                     iter_index=task.parent_id,
+                    temperature=temperature,
+                    svg_prev=parent.svg,
+                    svg_prev_invalid_msg=parent.invalid_msg,
                     rasterized_svg_data_url=parent_preview_data_url,
+                    change_summary=change_summary,
+                    diversity_hint=f"parent={task.parent_id} worker={task.worker_slot}",
                 )
+                svg = extract_svg_fragment(raw)
             except Exception as e:
-                log.debug(f"Summary failed task={task.task_id}: {e}")
-
-        try:
-            raw = call_openai_for_svg(
-                client=client,
-                original_data_url=openai_original_data_url,
-                iter_index=task.parent_id,
-                temperature=temperature,
-                svg_prev=parent.svg,
-                svg_prev_invalid_msg=parent.invalid_msg,
-                rasterized_svg_data_url=parent_preview_data_url,
-                change_summary=change_summary,
-                diversity_hint=f"parent={task.parent_id} worker={task.worker_slot}",
-            )
-            svg = extract_svg_fragment(raw)
-        except Exception as e:
-            result_q.put(
-                Result(
-                    task.task_id,
-                    task.parent_id,
-                    task.worker_slot,
-                    None,
-                    False,
-                    f"FATAL: OpenAI call failed: {e}",
-                    None,
-                    INVALID_SCORE,
-                    temperature,
-                    change_summary,
+                result_q.put(
+                    Result(
+                        task.task_id,
+                        task.parent_id,
+                        task.worker_slot,
+                        None,
+                        False,
+                        f"FATAL: OpenAI call failed: {e}",
+                        None,
+                        INVALID_SCORE,
+                        temperature,
+                        change_summary,
+                    )
                 )
-            )
-            continue
+                continue
 
+        # Common Validation and Scoring
         valid, err = is_valid_svg(svg)
         if not valid:
             result_q.put(
@@ -119,6 +155,7 @@ def worker_loop(
                     INVALID_SCORE,
                     temperature,
                     change_summary,
+                    secondary_parent_id=task.secondary_parent_id,
                 )
             )
             continue
@@ -139,6 +176,7 @@ def worker_loop(
                     INVALID_SCORE,
                     temperature,
                     change_summary,
+                    secondary_parent_id=task.secondary_parent_id,
                 )
             )
             continue
@@ -155,5 +193,6 @@ def worker_loop(
                 score,
                 temperature,
                 change_summary,
+                secondary_parent_id=task.secondary_parent_id,
             )
         )

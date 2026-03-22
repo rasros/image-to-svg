@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import List, Protocol
+from typing import List, Protocol, Tuple, Optional
 from svgizer.models import SearchNode, ChainState, Result
 
 
@@ -11,8 +11,10 @@ class StrategyType(str, Enum):
 class SearchStrategy(Protocol):
     """Protocol for the 'brains' of the search (selection and evolution)."""
 
-    def select_parent(self, nodes: List[SearchNode], progress: float) -> int:
-        """Decides which node to mutate next."""
+    def select_parent(
+        self, nodes: List[SearchNode], progress: float
+    ) -> Tuple[int, Optional[int]]:
+        """Decides which node(s) to mutate or crossover next."""
         ...
 
     def create_new_state(self, parent_state: ChainState, result: Result) -> ChainState:

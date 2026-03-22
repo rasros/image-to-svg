@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Tuple, Optional
 from svgizer.models import SearchNode, ChainState, Result
 
 
@@ -19,13 +19,15 @@ class GreedyHillClimbingStrategy:
     def top_k_count(self) -> int:
         return 1
 
-    def select_parent(self, nodes: List[SearchNode], progress: float) -> int:
+    def select_parent(
+        self, nodes: List[SearchNode], progress: float
+    ) -> Tuple[int, Optional[int]]:
         if not nodes:
-            return 0
+            return 0, None
 
         # Strictly Best-First Search
         best_node = min(nodes, key=lambda n: n.score)
-        return best_node.id
+        return best_node.id, None
 
     def create_new_state(self, parent_state: ChainState, result: Result) -> ChainState:
         next_temp = parent_state.model_temperature

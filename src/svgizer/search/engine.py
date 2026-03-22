@@ -90,14 +90,17 @@ class MultiprocessSearchEngine:
                     progress = (
                         accepted_count / float(max_accepts) if max_accepts > 0 else 0.0
                     )
-                    pid = self.strategy.select_parent(accepted_nodes, progress)
+                    pid1, pid2 = self.strategy.select_parent(accepted_nodes, progress)
+                    state2 = node_states.get(pid2) if pid2 is not None else None
 
                     self.task_q.put(
                         Task(
                             next_task_id,
-                            pid,
-                            node_states.get(pid),
+                            pid1,
+                            node_states.get(pid1),
                             in_flight % self.workers,
+                            secondary_parent_id=pid2,
+                            secondary_parent_state=state2,
                         )
                     )
                     next_task_id += 1
@@ -147,11 +150,22 @@ class MultiprocessSearchEngine:
                     is_new_best = True
 
                 # REPORT PROGRESS
-                status = "NEW BEST" if is_new_best else "ACCEPTED"
-                log.info(
-                    f"[{status}] node={new_node.id} parent={res.parent_id} "
-                    f"score={new_node.score:.6f} (Total: {accepted_count}/{max_accepts})"
-                )
+                if res.secondary_parent_id:
+                    status = (
+                        "NEW BEST (CROSSOVER)"
+                        if is_new_best
+                        else "ACCEPTED (CROSSOVER)"
+                    )
+                    log.info(
+                        f"[{status}] node={new_node.id} parents={res.parent_id}+{res.secondary_parent_id} "
+                        f"score={new_node.score:.6f} (Total: {accepted_count}/{max_accepts})"
+                    )
+                else:
+                    status = "NEW BEST" if is_new_best else "ACCEPTED"
+                    log.info(
+                        f"[{status}] node={new_node.id} parent={res.parent_id} "
+                        f"score={new_node.score:.6f} (Total: {accepted_count}/{max_accepts})"
+                    )
 
                 if res.change_summary:
                     # Log a snippet of the vision critique
@@ -180,7 +194,7 @@ class MultiprocessSearchEngine:
         for _ in self.procs:
             try:
                 self.task_q.put_nowait(None)
-            except:
+            except Exception:
                 pass
         for p in self.procs:
             p.join(timeout=2.0)

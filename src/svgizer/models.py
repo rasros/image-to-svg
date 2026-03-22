@@ -33,6 +33,8 @@ class Task:
     parent_id: int
     parent_state: ChainState
     worker_slot: int  # used only for diversity/jitter
+    secondary_parent_id: Optional[int] = None
+    secondary_parent_state: Optional[ChainState] = None
 
 
 @dataclasses.dataclass
@@ -47,3 +49,4 @@ class Result:
     score: float
     used_temperature: float
     change_summary: Optional[str]
+    secondary_parent_id: Optional[int] = None

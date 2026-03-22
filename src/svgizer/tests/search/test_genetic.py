@@ -15,8 +15,9 @@ def test_select_parent_returns_best_on_full_progress(strategy):
 
     # At progress 1.0, elite_prob is at its minimum,
     # but with top_k weighted, the best node is heavily favored.
-    selected = strategy.select_parent([n1, n2], progress=1.0)
+    selected, secondary = strategy.select_parent([n1, n2], progress=1.0)
     assert selected in [1, 2]
+    assert secondary is None or secondary in [1, 2]
 
 
 def test_create_new_state_increments_temp_on_staleness(strategy):

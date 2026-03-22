@@ -4,7 +4,7 @@ from svgizer.models import SearchNode, Result, ChainState
 
 class FakeStrategy:
     def select_parent(self, nodes, progress):
-        return 1
+        return 1, None
 
     def create_new_state(self, parent_state, result):
         return ChainState(None, None, None, 0.1, 0.6, 0, None)

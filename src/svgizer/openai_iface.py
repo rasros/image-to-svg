@@ -128,3 +128,40 @@ def call_openai_for_svg(
     )
 
     return response.output_text
+
+
+def call_openai_for_crossover(
+    client: OpenAI,
+    original_data_url: str,
+    temperature: float,
+    svg_a: str,
+    svg_b: str,
+) -> str:
+    lines = [
+        "You are a world-class SVG developer.",
+        "You are performing a genetic crossover between two candidate SVGs approximating the provided input raster image.",
+        "Analyze both Candidate A and Candidate B. Identify the strengths of each (e.g., one might have better structural grouping, while the other has better colors or finer details).",
+        "Merge the best elements of both into a single, superior SVG.",
+        "RULES:",
+        "1. Output ONLY the raw <svg>...</svg> code. No markdown, no backticks, no text.",
+        "2. Fixed Viewport: Use the same width/height/viewBox.",
+        "3. Ensure the XML is valid and well-formed.",
+        "--- CANDIDATE A CODE ---",
+        svg_a,
+        "--- CANDIDATE B CODE ---",
+        svg_b,
+    ]
+
+    content: List[dict] = [
+        {"type": "input_text", "text": "\n".join(lines)},
+        {"type": "input_image", "image_url": original_data_url},
+    ]
+
+    response = client.responses.create(
+        model=MODEL_NAME,
+        input=[{"role": "user", "content": content}],
+        temperature=temperature,
+        text={"format": {"type": "text"}},
+    )
+
+    return response.output_text
