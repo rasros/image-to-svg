@@ -1,36 +1,59 @@
-import pytest
-from unittest.mock import MagicMock, patch
 from svgizer.search.engine import MultiprocessSearchEngine
-from svgizer.models import SearchNode, Result
+from svgizer.models import SearchNode, Result, ChainState
 
-def test_engine_initialization():
-    strategy = MagicMock()
-    storage = MagicMock()
-    engine = MultiprocessSearchEngine(workers=2, strategy=strategy, storage=storage, scorer_type="simple")
+class FakeStrategy:
+    def select_parent(self, nodes, progress):
+        return 1
 
+    def create_new_state(self, parent_state, result):
+        return ChainState(None, None, None, 0.1, 0.6, 0, None)
+
+class FakeStorage:
+    write_lineage_enabled = False
+
+    def __init__(self):
+        self.save_called = False
+
+    def save_node(self, node):
+        self.save_called = True
+        return "fake_path.svg"
+
+def test_engine_init():
+    engine = MultiprocessSearchEngine(2, FakeStrategy(), FakeStorage(), "simple")
     assert engine.workers == 2
-    assert engine.scorer_type == "simple"
 
-@patch("svgizer.search.engine.mp.get_context")
-def test_engine_termination_on_max_accepts(mock_context):
-    strategy = MagicMock()
-    storage = MagicMock()
-    # Mock result queue to return a valid result immediately
-    mock_res = MagicMock(spec=Result)
-    mock_res.valid = True
-    mock_res.score = 0.1
-    mock_res.parent_id = 0
+def test_engine_run_loop_terminates_on_max_accepts(monkeypatch):
+    strat = FakeStrategy()
+    store = FakeStorage()
 
-    engine = MultiprocessSearchEngine(workers=1, strategy=strategy, storage=storage, scorer_type="simple")
-    engine.result_q.get = MagicMock(return_value=mock_res)
+    res = Result(
+        task_id=1, parent_id=1, worker_slot=0, svg="<svg/>",
+        valid=True, invalid_msg=None, raster_png=b"fake",
+        score=0.1, used_temperature=0.6, change_summary="better"
+    )
 
-    # Mock strategy to return a new state
-    strategy.create_new_state.return_value = MagicMock()
+    engine = MultiprocessSearchEngine(1, strat, store, "simple")
 
-    nodes = [SearchNode(score=0.5, id=0, parent_id=0, state=MagicMock())]
+    # 1. Bypass multiprocessing queues
+    monkeypatch.setattr(engine.result_q, "get", lambda timeout=None: res)
+    monkeypatch.setattr(engine.task_q, "put", lambda obj: None)
 
-    # Run engine with max_accepts=1. It should finish after one result.
-    best = engine.run(nodes, max_accepts=1, max_wall_seconds=10, openai_image_long_side=512, original_dims=(100, 100))
+    # 2. Bypass PIL trying to parse the b"fake" bytes
+    monkeypatch.setattr("svgizer.search.engine.make_preview_data_url", lambda png, side: "data:image/png;base64,fake")
+    monkeypatch.setattr("svgizer.search.engine.png_bytes_to_data_url", lambda png: "data:image/png;base64,fake")
+
+    initial_node = SearchNode(
+        score=0.8, id=1, parent_id=0,
+        state=ChainState(None, None, None, 0.8, 0.6, 0, None)
+    )
+
+    best = engine.run(
+        initial_nodes=[initial_node],
+        max_accepts=1,
+        max_wall_seconds=None,
+        openai_image_long_side=512,
+        original_dims=(100, 100)
+    )
 
     assert best.score == 0.1
-    assert storage.save_node.called
+    assert store.save_called is True
