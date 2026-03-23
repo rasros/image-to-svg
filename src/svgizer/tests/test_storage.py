@@ -1,5 +1,5 @@
 import csv
-import os
+from pathlib import Path
 
 import pytest
 
@@ -46,7 +46,7 @@ def test_initialize_creates_directories(tmp_path):
     adapter = FileStorageAdapter(output_path)
 
     adapter.initialize()
-    assert os.path.isdir(adapter.nodes_dir)
+    assert Path(adapter.nodes_dir).is_dir()
 
 
 def test_save_node_and_lineage(tmp_path, dummy_node):
@@ -56,13 +56,13 @@ def test_save_node_and_lineage(tmp_path, dummy_node):
     adapter.save_node(dummy_node)
 
     expected_filename = "score00000.123456_node00042_parent00010.svg"
-    svg_path = os.path.join(adapter.nodes_dir, expected_filename)
-    assert os.path.isfile(svg_path)
+    svg_path = Path(adapter.nodes_dir) / expected_filename
+    assert svg_path.is_file()
 
     assert adapter.max_node_id == 42
 
-    assert os.path.isfile(adapter.lineage_csv)
-    with open(adapter.lineage_csv, encoding="utf-8") as f:
+    assert Path(adapter.lineage_csv).is_file()
+    with Path(adapter.lineage_csv).open(encoding="utf-8") as f:
         reader = list(csv.reader(f))
         assert reader[0] == ["id", "parent", "score", "temp", "summary"]
         assert reader[1][0] == "42"
@@ -78,10 +78,13 @@ def test_load_resume_nodes(tmp_path):
     )
     adapter.initialize()
 
-    valid_svg = '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect fill="red"/></svg>'
+    valid_svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10">'
+        '<rect fill="red"/></svg>'
+    )
     new_format_fn = "score00000.555000_node00015_parent00010.svg"
 
-    with open(os.path.join(adapter.nodes_dir, new_format_fn), "w") as f:
+    with (Path(adapter.nodes_dir) / new_format_fn).open("w") as f:
         f.write(valid_svg)
 
     nodes = adapter.load_resume_nodes()

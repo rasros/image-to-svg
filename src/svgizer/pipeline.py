@@ -16,9 +16,9 @@ from svgizer.search import (
     GeneticPoolStrategy,
     MultiprocessSearchEngine,
     SearchNode,
+    StorageAdapter,
     StrategyType,
 )
-from svgizer.search import StorageAdapter
 from svgizer.svg_adapter import SvgStatePayload, SvgStrategyAdapter, is_svg_stale
 from svgizer.utils import setup_logger
 from svgizer.worker import worker_loop

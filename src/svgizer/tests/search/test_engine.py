@@ -7,10 +7,10 @@ class FakeStrategy:
     def top_k_count(self) -> int:
         return 1
 
-    def select_parent(self, nodes, progress):
+    def select_parent(self, _nodes, _progress):
         return 1, None
 
-    def create_new_state(self, parent_state, result):
+    def create_new_state(self, _parent_state, result):
         return ChainState(
             score=result.score,
             model_temperature=0.6,
@@ -27,12 +27,19 @@ class FakeStorage:
     def max_node_id(self) -> int:
         return 0
 
-    def initialize(self) -> None: pass
-    def load_resume_nodes(self) -> list: return []
-    def save_final_svg(self, content: str) -> None: pass
-    def load_seed_svg(self, path: str) -> str: return ""
+    def initialize(self) -> None:
+        pass
 
-    def save_node(self, node):
+    def load_resume_nodes(self) -> list:
+        return []
+
+    def save_final_svg(self, _content: str) -> None:
+        pass
+
+    def load_seed_svg(self, _path: str) -> str:
+        return ""
+
+    def save_node(self, _node):
         self.save_called = True
 
 
@@ -57,8 +64,8 @@ def test_engine_run_loop_terminates_on_max_accepts(monkeypatch):
 
     engine = MultiprocessSearchEngine(1, strat, store)
 
-    monkeypatch.setattr(engine.result_q, "get", lambda timeout=None: res)
-    monkeypatch.setattr(engine.task_q, "put", lambda obj: None)
+    monkeypatch.setattr(engine.result_q, "get", lambda _timeout=None: res)
+    monkeypatch.setattr(engine.task_q, "put", lambda _obj: None)
 
     initial_node = SearchNode(
         score=0.8,

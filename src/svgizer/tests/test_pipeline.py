@@ -23,7 +23,7 @@ class FakeStorage:
     def save_node(self, node):
         self._max_id = max(self._max_id, node.id)
 
-    def save_final_svg(self, content):
+    def save_final_svg(self, _content):
         pass
 
 
@@ -34,21 +34,29 @@ class FakeEngine:
     def __init__(self, *args, **kwargs):
         pass
 
-    def start_workers(self, target, params):
+    def start_workers(self, _target, _params):
         FakeEngine.started_workers = True
 
     def run(self, *args, **kwargs):
         FakeEngine.ran = True
-        return None
+        return
 
 
 def test_run_svg_search_flow(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
 
     # Mock image opening and scorer factory
-    monkeypatch.setattr("svgizer.pipeline.Image.open", lambda path: pytest.importorskip("PIL.Image").new("RGB", (10, 10)))
-    monkeypatch.setattr("svgizer.pipeline.get_scorer", lambda scorer_type: type("Scorer", (), {"prepare_reference": lambda s, i: None})())
-    monkeypatch.setattr("os.path.isfile", lambda path: True)
+    monkeypatch.setattr(
+        "svgizer.pipeline.Image.open",
+        lambda _path: pytest.importorskip("PIL.Image").new("RGB", (10, 10)),
+    )
+    monkeypatch.setattr(
+        "svgizer.pipeline.get_scorer",
+        lambda _scorer_type: type(
+            "Scorer", (), {"prepare_reference": lambda _s, _i: None}
+        )(),
+    )
+    monkeypatch.setattr("os.path.isfile", lambda _path: True)
     monkeypatch.setattr("svgizer.pipeline.MultiprocessSearchEngine", FakeEngine)
 
     store = FakeStorage()

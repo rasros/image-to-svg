@@ -27,8 +27,7 @@ class SearchStrategy(Protocol[TState]):
         ...
 
     @property
-    def top_k_count(self) -> int:
-        ...
+    def top_k_count(self) -> int: ...
 
 
 class StorageAdapter(Protocol[TState]):

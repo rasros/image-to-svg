@@ -1,4 +1,4 @@
-from .base import SearchStrategy, StrategyType, StorageAdapter
+from .base import SearchStrategy, StorageAdapter, StrategyType
 from .engine import MultiprocessSearchEngine
 from .genetic import GeneticPoolStrategy
 from .greedy import GreedyHillClimbingStrategy
@@ -13,7 +13,7 @@ __all__ = [
     "Result",
     "SearchNode",
     "SearchStrategy",
+    "StorageAdapter",
     "StrategyType",
     "Task",
-    "StorageAdapter"
 ]
