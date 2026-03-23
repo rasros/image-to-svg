@@ -1,11 +1,10 @@
 import dataclasses
 import difflib
+from collections.abc import Callable
 from typing import Any
 
 from svgizer.image_utils import make_preview_data_url, png_bytes_to_data_url
 from svgizer.search import ChainState, Result, SearchStrategy
-
-STALENESS_THRESHOLD = 0.995
 
 
 @dataclasses.dataclass
@@ -28,17 +27,26 @@ class SvgResultPayload:
     change_summary: str | None
 
 
-def is_svg_stale(prev_payload: SvgStatePayload, new_payload: SvgResultPayload) -> bool:
-    """Domain-specific check to see if the LLM is looping or stuck."""
-    if prev_payload is None or prev_payload.svg is None:
-        return False
-    if new_payload.svg is None:
-        return True
-    if prev_payload.svg == new_payload.svg:
-        return True
+def make_is_svg_stale(
+    threshold: float = 0.995,
+) -> Callable[[SvgStatePayload, SvgResultPayload], bool]:
+    """Returns a staleness check function configured with a specific diff threshold."""
 
-    ratio = difflib.SequenceMatcher(None, prev_payload.svg, new_payload.svg).ratio()
-    return ratio >= STALENESS_THRESHOLD
+    def is_svg_stale(
+        prev_payload: SvgStatePayload, new_payload: SvgResultPayload
+    ) -> bool:
+        """Domain-specific check to see if the LLM is looping or stuck."""
+        if prev_payload is None or prev_payload.svg is None:
+            return False
+        if new_payload.svg is None:
+            return True
+        if prev_payload.svg == new_payload.svg:
+            return True
+
+        ratio = difflib.SequenceMatcher(None, prev_payload.svg, new_payload.svg).ratio()
+        return ratio >= threshold
+
+    return is_svg_stale
 
 
 class SvgStrategyAdapter:
