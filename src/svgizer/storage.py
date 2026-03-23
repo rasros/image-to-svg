@@ -2,186 +2,134 @@ import csv
 import logging
 import os
 import re
-from typing import Protocol
 
 from svgizer.image_utils import make_preview_data_url, rasterize_svg_to_png_bytes
 from svgizer.search import ChainState, SearchNode
 from svgizer.svg_adapter import SvgStatePayload
 
-NODE_FILE_RE_NEW = re.compile(r"^score([0-9.]+)_node(\d+)_parent(\d+)\.svg$")
-NODE_FILE_RE_OLD = re.compile(r"_node(\d+)_score([0-9.]+)\.svg$")
-
-
-class StorageAdapter(Protocol):
-    """Protocol defining how the search algorithm interacts with storage."""
-
-    @property
-    def write_lineage_enabled(self) -> bool: ...
-
-    def initialize(self) -> None: ...
-
-    def save_node(self, node: SearchNode) -> str: ...
-
-    def write_lineage(
-        self, node_info: dict[int, tuple[int, float, str, str | None]]
-    ) -> None: ...
-
-    def load_resume_nodes(
-        self,
-        log: logging.Logger,
-        base_model_temperature: float,
-        original_w: int,
-        original_h: int,
-        openai_image_long_side: int,
-    ) -> tuple[list[SearchNode], SearchNode | None, int]: ...
-
-    def save_final_svg(self, svg_content: str) -> None: ...
-
-    def load_seed_svg(self, seed_path: str) -> str: ...
+log = logging.getLogger(__name__)
 
 
 class FileStorageAdapter:
-    """Concrete implementation for standard local file system I/O."""
+    """
+    Implementation of the Search Storage protocol using the local filesystem.
+    Handles node serialization, CSV lineage, and state hydration for resume.
+    """
 
     def __init__(
-        self, output_svg_path: str, write_lineage: bool = True, resume: bool = False
+        self,
+        output_svg_path: str,
+        resume: bool = False,
+        img_dims: tuple[int, int] = (512, 512),
+        openai_image_long_side: int = 512,
+        base_temp: float = 0.6,
     ):
         self.output_svg_path = output_svg_path
-        self._write_lineage_enabled = write_lineage
         self.resume = resume
+        self.img_dims = img_dims
+        self.openai_image_long_side = openai_image_long_side
+        self.base_temp = base_temp
+        self._max_id = 0
 
+        # Path parsing
         base_name, ext = os.path.splitext(output_svg_path)
-        if not ext:
-            ext = ".svg"
-
         self.base_name = os.path.basename(base_name)
-        self.ext = ext
+        self.ext = ext or ".svg"
         self.out_dir = os.path.dirname(base_name) or "."
-        self.nodes_dir = os.path.join(self.out_dir, self.base_name + "_nodes")
-        self.lineage_csv_path = os.path.join(
-            self.out_dir, self.base_name + "_lineage.csv"
-        )
+        self.nodes_dir = os.path.join(self.out_dir, f"{self.base_name}_nodes")
+        self.lineage_csv = os.path.join(self.out_dir, f"{self.base_name}_lineage.csv")
 
     @property
-    def write_lineage_enabled(self) -> bool:
-        return self._write_lineage_enabled
+    def max_node_id(self) -> int:
+        return self._max_id
 
     def initialize(self) -> None:
         os.makedirs(self.nodes_dir, exist_ok=True)
 
-    def save_node(self, node: SearchNode) -> str:
+    def save_node(self, node: SearchNode[SvgStatePayload]) -> None:
+        """Saves SVG file and updates lineage CSV."""
+        self._max_id = max(self._max_id, node.id)
+
         fn = f"score{node.score:012.6f}_node{node.id:05d}_parent{node.parent_id:05d}{self.ext}"
-        iter_path = os.path.join(self.nodes_dir, fn)
+        path = os.path.join(self.nodes_dir, fn)
+
         if node.state.payload.svg:
-            with open(iter_path, "w", encoding="utf-8") as f:
+            with open(path, "w", encoding="utf-8") as f:
                 f.write(node.state.payload.svg)
-        return iter_path
 
-    def write_lineage(
-        self, node_info: dict[int, tuple[int, float, str, str | None]]
-    ) -> None:
-        if not self._write_lineage_enabled:
-            return
-
+        # Append to CSV record
+        exists = os.path.isfile(self.lineage_csv)
         try:
-            with open(self.lineage_csv_path, "w", encoding="utf-8", newline="") as f:
+            with open(self.lineage_csv, "a", encoding="utf-8", newline="") as f:
                 w = csv.writer(f)
-                w.writerow(["node_id", "parent_id", "score", "path", "change_summary"])
-                for nid in sorted(node_info.keys()):
-                    pid, sc, pth, summ = node_info[nid]
-                    w.writerow([nid, pid, f"{sc:.6f}", pth, summ or ""])
+                if not exists:
+                    w.writerow(["id", "parent", "score", "temp", "summary"])
+                w.writerow(
+                    [
+                        node.id,
+                        node.parent_id,
+                        f"{node.score:.6f}",
+                        node.state.model_temperature,
+                        node.state.payload.change_summary or "",
+                    ]
+                )
         except Exception as e:
-            logging.getLogger("main").warning(f"Failed writing lineage files: {e}")
+            log.warning(f"Lineage write failed: {e}")
 
-    def load_resume_nodes(
-        self,
-        log: logging.Logger,
-        base_model_temperature: float,
-        original_w: int,
-        original_h: int,
-        openai_image_long_side: int,
-    ) -> tuple[list[SearchNode], SearchNode | None, int]:
-        if not self.resume:
-            return [], None, 0
+    def load_resume_nodes(self) -> list[SearchNode[SvgStatePayload]]:
+        """Scans filesystem to rebuild the search pool."""
+        if not self.resume or not os.path.isdir(self.nodes_dir):
+            return []
 
-        accepted: list[SearchNode] = []
-        best_seen: SearchNode | None = None
-        max_id = 0
+        nodes = []
+        pattern = re.compile(r"^score([0-9.]+)_node(\d+)_parent(\d+)\.svg$")
 
-        scan_paths: list[tuple[str, str]] = []
-        if os.path.isdir(self.nodes_dir):
-            scan_paths.append((self.nodes_dir, "new"))
-        scan_paths.append((self.out_dir, "old"))
-
-        for directory, mode in scan_paths:
-            try:
-                filenames = os.listdir(directory)
-            except Exception:
+        for fn in os.listdir(self.nodes_dir):
+            match = pattern.match(fn)
+            if not match:
                 continue
 
-            for fn in filenames:
-                if not fn.endswith(self.ext):
-                    continue
+            score, nid, pid = (
+                float(match.group(1)),
+                int(match.group(2)),
+                int(match.group(3)),
+            )
+            self._max_id = max(self._max_id, nid)
 
-                path = os.path.join(directory, fn)
-                if mode == "new":
-                    m = NODE_FILE_RE_NEW.match(fn)
-                    if not m:
-                        continue
-                    score = float(m.group(1))
-                    node_id = int(m.group(2))
-                    parent_id = int(m.group(3))
-                else:
-                    m = NODE_FILE_RE_OLD.search(fn)
-                    if not m:
-                        continue
-                    node_id = int(m.group(1))
-                    score = float(m.group(2))
-                    parent_id = 0
+            try:
+                with open(os.path.join(self.nodes_dir, fn), encoding="utf-8") as f:
+                    svg = f.read()
 
-                try:
-                    with open(path, encoding="utf-8") as f:
-                        svg = f.read()
-                    full_png = rasterize_svg_to_png_bytes(
-                        svg, out_w=original_w, out_h=original_h
+                # Hydrate preview for the LLM context
+                png = rasterize_svg_to_png_bytes(
+                    svg, out_w=self.img_dims[0], out_h=self.img_dims[1]
+                )
+                prev = make_preview_data_url(png, self.openai_image_long_side)
+
+                nodes.append(
+                    SearchNode(
+                        score=score,
+                        id=nid,
+                        parent_id=pid,
+                        state=ChainState(
+                            score=score,
+                            model_temperature=self.base_temp,
+                            stale_hits=0,
+                            payload=SvgStatePayload(svg, None, prev, None, None),
+                        ),
                     )
-                    raster_preview_data_url = make_preview_data_url(
-                        full_png, openai_image_long_side
-                    )
-                except Exception as e:
-                    log.warning(f"Resume: failed to load {path}: {e}")
-                    continue
-
-                payload = SvgStatePayload(
-                    svg=svg,
-                    raster_data_url=None,  # avoid big RAM usage for resume nodes
-                    raster_preview_data_url=raster_preview_data_url,
-                    change_summary=None,
-                    invalid_msg=None,
                 )
+            except Exception as e:
+                log.error(f"Failed to load resume node {fn}: {e}")
 
-                state = ChainState(
-                    score=score,
-                    model_temperature=base_model_temperature,
-                    stale_hits=0,
-                    payload=payload,
-                )
-                node = SearchNode(
-                    score=score, id=node_id, parent_id=parent_id, state=state
-                )
-                accepted.append(node)
-
-                if best_seen is None or node.score < best_seen.score:
-                    best_seen = node
-                max_id = max(max_id, node_id)
-
-        accepted.sort(key=lambda n: n.id)
-        return accepted, best_seen, max_id
+        return sorted(nodes, key=lambda n: n.id)
 
     def save_final_svg(self, svg_content: str) -> None:
+        """Saves the best result to the primary output path."""
         with open(self.output_svg_path, "w", encoding="utf-8") as f:
             f.write(svg_content)
 
     def load_seed_svg(self, seed_path: str) -> str:
+        """Utility for the pipeline to load user-provided starting points."""
         with open(seed_path, encoding="utf-8") as f:
             return f.read()

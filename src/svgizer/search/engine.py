@@ -4,20 +4,26 @@ import multiprocessing as mp
 import queue
 import time
 from collections.abc import Callable
-from typing import Any
+from typing import Generic, TypeVar
 
-from .base import SearchStrategy
+from .base import SearchStrategy, StorageAdapter
 from .models import Result, SearchNode, Task
 
+TState = TypeVar("TState")
 log = logging.getLogger(__name__)
 
 
-class MultiprocessSearchEngine:
+class MultiprocessSearchEngine(Generic[TState]):
+    """
+    Orchestrates a parallel search by coordinating worker processes,
+    an evolution strategy, and a persistence adapter.
+    """
+
     def __init__(
         self,
         workers: int,
-        strategy: SearchStrategy,
-        storage: Any,
+        strategy: SearchStrategy[TState],
+        storage: StorageAdapter[TState],
         max_total_tasks: int = 10000,
     ):
         self.workers = workers
@@ -28,9 +34,9 @@ class MultiprocessSearchEngine:
         self.ctx = mp.get_context("spawn")
         self.task_q = self.ctx.Queue(maxsize=max(64, workers * 8))
         self.result_q = self.ctx.Queue()
-        self.procs = []
+        self.procs: list[mp.Process] = []
 
-    def start_workers(self, worker_target: Callable, worker_params: dict):
+    def start_workers(self, worker_target: Callable, worker_params: dict) -> None:
         log.info(f"Starting {self.workers} worker processes...")
         for _ in range(max(1, self.workers)):
             p = self.ctx.Process(
@@ -43,35 +49,39 @@ class MultiprocessSearchEngine:
 
     def run(
         self,
-        initial_nodes: list[SearchNode],
+        initial_nodes: list[SearchNode[TState]],
         max_accepts: int,
         max_wall_seconds: float | None,
-    ):
+    ) -> SearchNode[TState] | None:
         start_time = time.monotonic()
         node_states = {n.id: n.state for n in initial_nodes}
         accepted_nodes = list(initial_nodes)
 
-        # Track the best score found so far
+        # Track best node found
         best_node = min(initial_nodes, key=lambda n: n.score) if initial_nodes else None
 
         next_task_id = 1
         tasks_completed = 0
         accepted_count = 0
         in_flight = 0
-        next_node_id = max((n.id for n in initial_nodes), default=0)
+
+        # Initialize ID counter using the storage protocol's knowledge
+        next_node_id = max(
+            self.storage.max_node_id, max((n.id for n in initial_nodes), default=0)
+        )
 
         log.info(
-            f"Search started. Target accepts: {max_accepts}. Initial best score: {best_node.score if best_node else 'N/A'}"
+            f"Search started. Initial best: {best_node.score if best_node else 'N/A'}"
         )
 
         try:
             while True:
-                # 1. Termination Checks
+                # 1. Termination checks
                 if (
                     max_wall_seconds
                     and (time.monotonic() - start_time) >= max_wall_seconds
                 ):
-                    log.warning("Time limit reached. Shutting down...")
+                    log.warning("Time limit reached.")
                     break
                 if accepted_count >= max_accepts:
                     log.info(f"Target of {max_accepts} accepts reached.")
@@ -86,7 +96,6 @@ class MultiprocessSearchEngine:
                         accepted_count / float(max_accepts) if max_accepts > 0 else 0.0
                     )
                     pid1, pid2 = self.strategy.select_parent(accepted_nodes, progress)
-                    state2 = node_states.get(pid2) if pid2 is not None else None
 
                     self.task_q.put(
                         Task(
@@ -95,7 +104,9 @@ class MultiprocessSearchEngine:
                             parent_state=node_states.get(pid1),
                             worker_slot=in_flight % self.workers,
                             secondary_parent_id=pid2,
-                            secondary_parent_state=state2,
+                            secondary_parent_state=node_states.get(pid2)
+                            if pid2
+                            else None,
                         )
                     )
                     next_task_id += 1
@@ -111,10 +122,10 @@ class MultiprocessSearchEngine:
                 tasks_completed += 1
 
                 if not res.valid:
-                    log.debug(f"Task {res.task_id} failed: {res.invalid_msg}")
+                    log.debug(f"Task {res.task_id} invalid: {res.invalid_msg}")
                     continue
 
-                # 4. Evolution via Strategy
+                # 4. Evolution & Storage
                 next_node_id += 1
                 new_state = self.strategy.create_new_state(
                     node_states[res.parent_id], res
@@ -131,20 +142,15 @@ class MultiprocessSearchEngine:
                 node_states[new_node.id] = new_state
                 accepted_count += 1
 
-                # Check for New Best
-                is_new_best = False
                 if best_node is None or new_node.score < best_node.score:
                     best_node = new_node
-                    is_new_best = True
+                    status = "NEW BEST"
+                else:
+                    status = "ACCEPTED"
 
-                # REPORT PROGRESS
-                status_cross = "(CROSSOVER)" if res.secondary_parent_id else ""
-                status_best = "NEW BEST" if is_new_best else "ACCEPTED"
-                log.info(
-                    f"[{status_best} {status_cross}] node={new_node.id} parent={res.parent_id} "
-                    f"score={new_node.score:.6f} (Total: {accepted_count}/{max_accepts})"
-                )
+                log.info(f"[{status}] node={new_node.id} score={new_node.score:.6f}")
 
+                # Persist via Protocol
                 self.storage.save_node(new_node)
 
         finally:
@@ -152,10 +158,10 @@ class MultiprocessSearchEngine:
 
         return best_node
 
-    def _shutdown(self):
-        log.info("Cleaning up worker processes...")
+    def _shutdown(self) -> None:
+        log.info("Shutting down workers...")
         for _ in self.procs:
             with contextlib.suppress(Exception):
                 self.task_q.put_nowait(None)
         for p in self.procs:
-            p.join(timeout=2.0)
+            p.join(timeout=1.0)

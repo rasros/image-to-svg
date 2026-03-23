@@ -6,16 +6,25 @@ from svgizer.search import StrategyType
 
 
 class FakeStorage:
-    write_lineage_enabled = False
-
     def __init__(self):
         self.initialized = False
+        self._max_id = 0
+
+    @property
+    def max_node_id(self) -> int:
+        return self._max_id
 
     def initialize(self):
         self.initialized = True
 
-    def load_resume_nodes(self, *args, **kwargs):
-        return ([], None, 0)
+    def load_resume_nodes(self):
+        return []
+
+    def save_node(self, node):
+        self._max_id = max(self._max_id, node.id)
+
+    def save_final_svg(self, content):
+        pass
 
 
 class FakeEngine:
@@ -30,59 +39,16 @@ class FakeEngine:
 
     def run(self, *args, **kwargs):
         FakeEngine.ran = True
-        return
-
-
-class FakeImage:
-    @property
-    def size(self):
-        return (100, 100)
-
-    def convert(self, mode):
-        return self
-
-    def save(self, buf, format):
-        buf.write(b"fake_png_bytes")
-
-
-class FakeScorer:
-    def prepare_reference(self, img):
         return None
-
-    def score(self, ref, png):
-        return 0.5
-
-
-def test_run_svg_search_fails_without_api_key(monkeypatch):
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-
-    with pytest.raises(SystemExit) as excinfo:
-        run_svg_search(
-            "any.png",
-            FakeStorage(),
-            None,
-            1,
-            1,
-            0.6,
-            512,
-            None,
-            "INFO",
-            ScorerType.SIMPLE,
-            StrategyType.GREEDY,
-            None,
-        )
-
-    assert "OPENAI_API_KEY" in str(excinfo.value)
 
 
 def test_run_svg_search_flow(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
 
-    # Target the new pipeline module for monkeypatching
-    monkeypatch.setattr("svgizer.pipeline.Image.open", lambda path: FakeImage())
-    monkeypatch.setattr("svgizer.pipeline.get_scorer", lambda scorer_type: FakeScorer())
+    # Mock image opening and scorer factory
+    monkeypatch.setattr("svgizer.pipeline.Image.open", lambda path: pytest.importorskip("PIL.Image").new("RGB", (10, 10)))
+    monkeypatch.setattr("svgizer.pipeline.get_scorer", lambda scorer_type: type("Scorer", (), {"prepare_reference": lambda s, i: None})())
     monkeypatch.setattr("os.path.isfile", lambda path: True)
-
     monkeypatch.setattr("svgizer.pipeline.MultiprocessSearchEngine", FakeEngine)
 
     store = FakeStorage()

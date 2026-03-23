@@ -3,6 +3,10 @@ from svgizer.search.engine import MultiprocessSearchEngine
 
 
 class FakeStrategy:
+    @property
+    def top_k_count(self) -> int:
+        return 1
+
     def select_parent(self, nodes, progress):
         return 1, None
 
@@ -16,14 +20,20 @@ class FakeStrategy:
 
 
 class FakeStorage:
-    write_lineage_enabled = False
-
     def __init__(self):
         self.save_called = False
 
+    @property
+    def max_node_id(self) -> int:
+        return 0
+
+    def initialize(self) -> None: pass
+    def load_resume_nodes(self) -> list: return []
+    def save_final_svg(self, content: str) -> None: pass
+    def load_seed_svg(self, path: str) -> str: return ""
+
     def save_node(self, node):
         self.save_called = True
-        return "fake_path.txt"
 
 
 def test_engine_init():
@@ -63,5 +73,6 @@ def test_engine_run_loop_terminates_on_max_accepts(monkeypatch):
         max_wall_seconds=None,
     )
 
+    assert best is not None
     assert best.score == 0.1
     assert store.save_called is True
