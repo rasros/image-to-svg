@@ -13,9 +13,9 @@ def determine_provider_and_model(args) -> tuple[str, str]:
     model = args.model
 
     default_models = {
-        "openai": "gpt-4o",
-        "anthropic": "claude-3-5-sonnet-latest",
-        "gemini": "gemini-1.5-pro",
+        "openai": "gpt-5.4",
+        "anthropic": "claude-4-6-sonnet",
+        "gemini": "gemini-3.1-pro-preview",
     }
 
     if provider == "auto":
@@ -43,7 +43,7 @@ def determine_provider_and_model(args) -> tuple[str, str]:
             sys.exit(1)
 
     if not model:
-        model = default_models.get(provider, "gpt-4o")
+        model = default_models.get(provider, "gpt-5.4")
 
     return provider, model
 
