@@ -1,4 +1,3 @@
-import contextlib
 import logging
 import multiprocessing as mp
 import queue
@@ -57,7 +56,6 @@ class MultiprocessSearchEngine(Generic[TState]):
         node_states = {n.id: n.state for n in initial_nodes}
         accepted_nodes = list(initial_nodes)
 
-        # Track best node found
         best_node = min(initial_nodes, key=lambda n: n.score) if initial_nodes else None
 
         next_task_id = 1
@@ -65,7 +63,6 @@ class MultiprocessSearchEngine(Generic[TState]):
         accepted_count = 0
         in_flight = 0
 
-        # Initialize ID counter using the storage protocol's knowledge
         next_node_id = max(
             self.storage.max_node_id, max((n.id for n in initial_nodes), default=0)
         )
@@ -76,7 +73,6 @@ class MultiprocessSearchEngine(Generic[TState]):
 
         try:
             while True:
-                # 1. Termination checks
                 if (
                     max_wall_seconds
                     and (time.monotonic() - start_time) >= max_wall_seconds
@@ -90,7 +86,6 @@ class MultiprocessSearchEngine(Generic[TState]):
                     log.warning("Max task limit reached.")
                     break
 
-                # 2. Feeding Tasks
                 while in_flight < self.workers and next_task_id <= self.max_total_tasks:
                     progress = (
                         accepted_count / float(max_accepts) if max_accepts > 0 else 0.0
@@ -110,7 +105,6 @@ class MultiprocessSearchEngine(Generic[TState]):
                     next_task_id += 1
                     in_flight += 1
 
-                # 3. Collecting Results
                 try:
                     res: Result = self.result_q.get(timeout=0.2)
                 except queue.Empty:
@@ -123,7 +117,6 @@ class MultiprocessSearchEngine(Generic[TState]):
                     log.debug(f"Task {res.task_id} invalid: {res.invalid_msg}")
                     continue
 
-                # 4. Evolution & Storage
                 next_node_id += 1
                 new_state = self.strategy.create_new_state(
                     node_states[res.parent_id], res
@@ -149,7 +142,6 @@ class MultiprocessSearchEngine(Generic[TState]):
 
                 log.info(f"[{status}] node={new_node.id} score={new_node.score:.6f}")
 
-                # Persist via Protocol
                 self.storage.save_node(new_node)
 
         finally:
@@ -160,7 +152,14 @@ class MultiprocessSearchEngine(Generic[TState]):
     def _shutdown(self) -> None:
         log.info("Shutting down workers...")
         for _ in self.procs:
-            with contextlib.suppress(Exception):
-                self.task_q.put_nowait(None)
+            try:
+                self.task_q.put(None, timeout=0.5)
+            except queue.Full:
+                log.debug("Task queue full during shutdown, dropping poison pill.")
         for p in self.procs:
             p.join(timeout=1.0)
+            if p.is_alive():
+                log.warning(
+                    f"Worker process {p.pid} hung during shutdown. Terminating."
+                )
+                p.terminate()
