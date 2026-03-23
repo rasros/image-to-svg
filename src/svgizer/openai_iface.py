@@ -68,6 +68,7 @@ def call_openai_for_svg(
     rasterized_svg_data_url: Optional[str] = None,
     change_summary: Optional[str] = None,
     diversity_hint: Optional[str] = None,
+    custom_goal: Optional[str] = None,
 ) -> str:
     lines = [
         "You are a world-class SVG developer. Convert the input raster into a CLEAN, optimized SVG.",
@@ -78,6 +79,12 @@ def call_openai_for_svg(
         "4. No Noise: Do not attempt to vectorize compression artifacts or grain.",
         f"Context: Iteration #{iter_index}.",
     ]
+
+    if custom_goal:
+        lines.append("USER SPECIFIC GOAL/INSTRUCTION:")
+        lines.append(custom_goal)
+        lines.append("Prioritize the above goal during this generation pass.")
+
 
     if diversity_hint:
         lines.append(f"Diversity hint: {diversity_hint}")

@@ -37,6 +37,7 @@ def run_search(
     log_level: str,
     scorer_type: ScorerType,
     strategy: StrategyType,
+    goal: Optional[str],
 ) -> None:
     """
     Main entry point for the SVG optimization search.
@@ -153,6 +154,7 @@ def run_search(
         "openai_image_long_side": openai_image_long_side,
         "log_level": log_level,
         "scorer_type": scorer_type,
+        "goal": goal,
     }
 
     # 6. Run Search

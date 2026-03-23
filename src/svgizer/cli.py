@@ -43,6 +43,12 @@ def parse_args():
         help="Search strategy/evolution algorithm to use.",
     )
 
+    parser.add_argument(
+        "--goal",
+        default=None,
+        help="Custom prompt/goal to guide the SVG generation (e.g., 'Make lines thicker').",
+    )
+
     # Search Constraints
     parser.add_argument(
         "--max-accepts",

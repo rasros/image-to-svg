@@ -2,7 +2,7 @@ import io
 import logging
 import multiprocessing as mp
 import os
-from typing import Any
+from typing import Any, Optional
 
 from openai import OpenAI
 from PIL import Image
@@ -32,6 +32,7 @@ def worker_loop(
     openai_image_long_side: int,
     log_level: str,
     scorer_type: str,
+    goal: Optional[str]
 ):
     setup_logger(log_level)
     log = logging.getLogger("worker")
@@ -121,6 +122,7 @@ def worker_loop(
                     rasterized_svg_data_url=parent_preview_data_url,
                     change_summary=change_summary,
                     diversity_hint=f"parent={task.parent_id} worker={task.worker_slot}",
+                    custom_goal=goal
                 )
                 svg = extract_svg_fragment(raw)
             except Exception as e:

@@ -36,6 +36,7 @@ def main():
             log_level=args.log_level,
             scorer_type=args.scorer,
             strategy=args.strategy,
+            goal=args.goal,
         )
     except KeyboardInterrupt:
         print("\nSearch interrupted by user. Exiting safely...", file=sys.stderr)
