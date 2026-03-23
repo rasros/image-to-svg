@@ -1,7 +1,11 @@
+from typing import Generic, TypeVar
+
 from .models import ChainState, Result, SearchNode
 
+TState = TypeVar("TState")
 
-class GreedyHillClimbingStrategy:
+
+class GreedyHillClimbingStrategy(Generic[TState]):
     """
     Simplest baseline: Always selects the single best node found so far.
     Increases model temperature if it gets stuck at a local minimum.
@@ -20,16 +24,19 @@ class GreedyHillClimbingStrategy:
 
     def select_parent(
         self,
-        nodes: list[SearchNode],
-        progress: float,  # noqa: ARG002
+        nodes: list[SearchNode[TState]],
+        progress: float,
     ) -> tuple[int, int | None]:
+        _ = progress
         if not nodes:
             return 0, None
 
         best_node = min(nodes, key=lambda n: n.score)
         return best_node.id, None
 
-    def create_new_state(self, parent_state: ChainState, result: Result) -> ChainState:
+    def create_new_state(
+        self, parent_state: ChainState[TState], result: Result
+    ) -> ChainState[TState]:
         next_temp = parent_state.model_temperature
         stale_hits = parent_state.stale_hits
 
