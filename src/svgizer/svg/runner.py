@@ -19,9 +19,9 @@ from svgizer.search import (
     StorageAdapter,
     StrategyType,
 )
-from svgizer.svg_adapter import SvgStatePayload, SvgStrategyAdapter, is_svg_stale
+from svgizer.svg.adapter import SvgStatePayload, SvgStrategyAdapter, is_svg_stale
+from svgizer.svg.worker import worker_loop
 from svgizer.utils import setup_logger
-from svgizer.worker import worker_loop
 
 log = logging.getLogger("main")
 

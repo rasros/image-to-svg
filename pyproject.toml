@@ -1,7 +1,7 @@
 [project]
 name = "svgizer"
 version = "0.1.0"
-description = "Iterative SVG refinement using OpenAI multimodal models"
+description = "Iterative SVG refinement using OpenAI multimodal models and search-based optimization"
 readme = "README.md"
 requires-python = ">=3.10"
 

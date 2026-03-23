@@ -5,17 +5,17 @@ import multiprocessing as mp
 from PIL import Image
 
 from svgizer.diff import get_scorer
-from svgizer.generation import (
+from svgizer.image_utils import rasterize_svg_to_png_bytes
+from svgizer.llm import LLMClient, LLMConfig
+from svgizer.search import INVALID_SCORE, Result
+from svgizer.svg.adapter import SvgResultPayload
+from svgizer.svg.prompts import (
     build_crossover_prompt,
     build_summarize_prompt,
     build_svg_gen_prompt,
     extract_svg_fragment,
     is_valid_svg,
 )
-from svgizer.image_utils import rasterize_svg_to_png_bytes
-from svgizer.llm import LLMClient, LLMConfig
-from svgizer.search import INVALID_SCORE, Result
-from svgizer.svg_adapter import SvgResultPayload
 from svgizer.utils import setup_logger
 
 

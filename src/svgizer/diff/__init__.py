@@ -1,6 +1,5 @@
 import logging
 from enum import Enum
-from typing import Dict, Type
 
 from .base import DiffScorer, ScoreConfig
 from .dreamsim import DreamSimScorer

@@ -4,8 +4,8 @@ from pathlib import Path
 import pytest
 
 from svgizer.search import ChainState, SearchNode
-from svgizer.storage import FileStorageAdapter
-from svgizer.svg_adapter import SvgStatePayload
+from svgizer.svg.adapter import SvgStatePayload
+from svgizer.svg.storage import FileStorageAdapter
 
 
 @pytest.fixture

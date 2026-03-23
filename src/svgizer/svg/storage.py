@@ -5,7 +5,7 @@ from pathlib import Path
 
 from svgizer.image_utils import make_preview_data_url, rasterize_svg_to_png_bytes
 from svgizer.search import ChainState, SearchNode
-from svgizer.svg_adapter import SvgStatePayload
+from svgizer.svg.adapter import SvgStatePayload
 
 log = logging.getLogger(__name__)
 
