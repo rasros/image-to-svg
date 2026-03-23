@@ -1,6 +1,6 @@
 import pytest
 
-from svgizer.search import ChainState, Result, SearchNode, GeneticPoolStrategy
+from svgizer.search import ChainState, GeneticPoolStrategy, Result, SearchNode
 
 
 @pytest.fixture
@@ -10,7 +10,7 @@ def strategy():
         temp_step=0.5,
         max_temp=2.0,
         stale_threshold=1,
-        is_stale_fn=lambda p1, p2: p1 == p2
+        is_stale_fn=lambda p1, p2: p1 == p2,
     )
 
 

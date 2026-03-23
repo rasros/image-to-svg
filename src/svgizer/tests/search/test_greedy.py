@@ -1,6 +1,6 @@
 import pytest
 
-from svgizer.search import ChainState, Result, SearchNode, GreedyHillClimbingStrategy
+from svgizer.search import ChainState, GreedyHillClimbingStrategy, Result, SearchNode
 
 
 @pytest.fixture

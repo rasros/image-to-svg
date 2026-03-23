@@ -5,10 +5,10 @@ from .greedy import GreedyHillClimbingStrategy
 from .models import INVALID_SCORE, ChainState, Result, SearchNode, Task
 
 __all__ = [
+    "INVALID_SCORE",
     "ChainState",
     "GeneticPoolStrategy",
     "GreedyHillClimbingStrategy",
-    "INVALID_SCORE",
     "MultiprocessSearchEngine",
     "Result",
     "SearchNode",

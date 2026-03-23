@@ -1,8 +1,8 @@
 import pytest
 
 from svgizer.diff import ScorerType
-from svgizer.search import StrategyType
 from svgizer.pipeline import run_svg_search
+from svgizer.search import StrategyType
 
 
 class FakeStorage:
@@ -30,7 +30,7 @@ class FakeEngine:
 
     def run(self, *args, **kwargs):
         FakeEngine.ran = True
-        return None
+        return
 
 
 class FakeImage:
@@ -80,9 +80,7 @@ def test_run_svg_search_flow(monkeypatch):
 
     # Target the new pipeline module for monkeypatching
     monkeypatch.setattr("svgizer.pipeline.Image.open", lambda path: FakeImage())
-    monkeypatch.setattr(
-        "svgizer.pipeline.get_scorer", lambda scorer_type: FakeScorer()
-    )
+    monkeypatch.setattr("svgizer.pipeline.get_scorer", lambda scorer_type: FakeScorer())
     monkeypatch.setattr("os.path.isfile", lambda path: True)
 
     monkeypatch.setattr("svgizer.pipeline.MultiprocessSearchEngine", FakeEngine)

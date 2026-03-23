@@ -11,7 +11,7 @@ class FakeStrategy:
             score=result.score,
             model_temperature=0.6,
             stale_hits=0,
-            payload="new_fake_payload"
+            payload="new_fake_payload",
         )
 
 

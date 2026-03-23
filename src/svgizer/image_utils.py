@@ -21,10 +21,10 @@ def downscale_png_bytes(png_bytes: bytes, long_side: int) -> bytes:
 
     if w >= h:
         new_w = long_side
-        new_h = int(round(h * (long_side / float(w))))
+        new_h = round(h * (long_side / float(w)))
     else:
         new_h = long_side
-        new_w = int(round(w * (long_side / float(h))))
+        new_w = round(w * (long_side / float(h)))
 
     new_w = max(1, new_w)
     new_h = max(1, new_h)

@@ -5,8 +5,8 @@ import os
 import pytest
 
 from svgizer.search import ChainState, SearchNode
-from svgizer.svg_adapter import SvgStatePayload
 from svgizer.storage import FileStorageAdapter
+from svgizer.svg_adapter import SvgStatePayload
 
 
 @pytest.fixture
@@ -142,13 +142,17 @@ def test_load_resume_nodes(tmp_path):
     assert nodes[0].score == 0.999
     assert nodes[0].parent_id == 0
     assert nodes[0].state.payload.svg == valid_svg_old
-    assert nodes[0].state.payload.raster_preview_data_url.startswith("data:image/png;base64,")
+    assert nodes[0].state.payload.raster_preview_data_url.startswith(
+        "data:image/png;base64,"
+    )
 
     assert nodes[1].id == 15
     assert nodes[1].score == 0.555
     assert nodes[1].parent_id == 10
     assert nodes[1].state.payload.svg == valid_svg_new
-    assert nodes[1].state.payload.raster_preview_data_url.startswith("data:image/png;base64,")
+    assert nodes[1].state.payload.raster_preview_data_url.startswith(
+        "data:image/png;base64,"
+    )
 
     assert best_seen.id == 15
 

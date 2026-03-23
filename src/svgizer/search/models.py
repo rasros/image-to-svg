@@ -1,5 +1,5 @@
 import dataclasses
-from typing import Any, Generic, TypeVar
+from typing import Generic, TypeVar
 
 INVALID_SCORE = 1e9
 

@@ -9,8 +9,6 @@ from PIL import Image
 
 from svgizer.diff import get_scorer
 from svgizer.image_utils import rasterize_svg_to_png_bytes
-from svgizer.search import INVALID_SCORE, Result, Task
-from svgizer.svg_adapter import SvgResultPayload
 from svgizer.openai_iface import (
     call_openai_for_crossover,
     call_openai_for_svg,
@@ -18,6 +16,8 @@ from svgizer.openai_iface import (
     is_valid_svg,
     summarize_changes,
 )
+from svgizer.search import INVALID_SCORE, Result, Task
+from svgizer.svg_adapter import SvgResultPayload
 from svgizer.utils import setup_logger
 
 MAX_TEMP = 1.6
@@ -32,7 +32,7 @@ def worker_loop(
     original_png_bytes = worker_params["original_png_bytes"]
     original_w = worker_params["original_w"]
     original_h = worker_params["original_h"]
-    openai_image_long_side = worker_params["openai_image_long_side"]
+    worker_params["openai_image_long_side"]
     log_level = worker_params["log_level"]
     scorer_type = worker_params["scorer_type"]
     goal = worker_params["goal"]
@@ -87,7 +87,9 @@ def worker_loop(
                         valid=False,
                         score=INVALID_SCORE,
                         used_temperature=temperature,
-                        payload=SvgResultPayload(svg=None, raster_png=None, change_summary=None),
+                        payload=SvgResultPayload(
+                            svg=None, raster_png=None, change_summary=None
+                        ),
                         invalid_msg=f"FATAL: OpenAI Crossover call failed: {e}",
                         secondary_parent_id=task.secondary_parent_id,
                     )
@@ -132,7 +134,9 @@ def worker_loop(
                         valid=False,
                         score=INVALID_SCORE,
                         used_temperature=temperature,
-                        payload=SvgResultPayload(svg=None, raster_png=None, change_summary=change_summary),
+                        payload=SvgResultPayload(
+                            svg=None, raster_png=None, change_summary=change_summary
+                        ),
                         invalid_msg=f"FATAL: OpenAI call failed: {e}",
                         secondary_parent_id=task.secondary_parent_id,
                     )
@@ -149,7 +153,9 @@ def worker_loop(
                     valid=False,
                     score=INVALID_SCORE,
                     used_temperature=temperature,
-                    payload=SvgResultPayload(svg=svg, raster_png=None, change_summary=change_summary),
+                    payload=SvgResultPayload(
+                        svg=svg, raster_png=None, change_summary=change_summary
+                    ),
                     invalid_msg=err,
                     secondary_parent_id=task.secondary_parent_id,
                 )
@@ -168,7 +174,9 @@ def worker_loop(
                     valid=False,
                     score=INVALID_SCORE,
                     used_temperature=temperature,
-                    payload=SvgResultPayload(svg=svg, raster_png=None, change_summary=change_summary),
+                    payload=SvgResultPayload(
+                        svg=svg, raster_png=None, change_summary=change_summary
+                    ),
                     invalid_msg=f"FATAL: Rasterize/score failed: {e}",
                     secondary_parent_id=task.secondary_parent_id,
                 )
@@ -183,7 +191,9 @@ def worker_loop(
                 valid=True,
                 score=score,
                 used_temperature=temperature,
-                payload=SvgResultPayload(svg=svg, raster_png=png, change_summary=change_summary),
+                payload=SvgResultPayload(
+                    svg=svg, raster_png=png, change_summary=change_summary
+                ),
                 invalid_msg=None,
                 secondary_parent_id=task.secondary_parent_id,
             )

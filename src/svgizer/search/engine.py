@@ -1,3 +1,4 @@
+import contextlib
 import logging
 import multiprocessing as mp
 import queue
@@ -154,9 +155,7 @@ class MultiprocessSearchEngine:
     def _shutdown(self):
         log.info("Cleaning up worker processes...")
         for _ in self.procs:
-            try:
+            with contextlib.suppress(Exception):
                 self.task_q.put_nowait(None)
-            except Exception:
-                pass
         for p in self.procs:
             p.join(timeout=2.0)

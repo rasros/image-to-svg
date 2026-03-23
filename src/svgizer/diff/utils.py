@@ -18,10 +18,10 @@ def resize_long_side(im: Image.Image, long_side: int) -> Image.Image:
         return im
     if w >= h:
         new_w = long_side
-        new_h = int(round(h * (long_side / float(w))))
+        new_h = round(h * (long_side / float(w)))
     else:
         new_h = long_side
-        new_w = int(round(w * (long_side / float(h))))
+        new_w = round(w * (long_side / float(h)))
     return im.resize((max(1, new_w), max(1, new_h)), resample=Resampling.BILINEAR)
 
 
