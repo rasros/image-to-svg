@@ -25,7 +25,7 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
 
     provider_name = worker_params.get("llm_provider", "openai")
     api_key = worker_params.get("api_key")
-    model_name = worker_params.get("llm_model", "gpt-4o")
+    model_name = worker_params.get("llm_model", "gpt-5.4")
 
     client = get_provider(provider_name, api_key)
     scorer = get_scorer(worker_params["scorer_type"])

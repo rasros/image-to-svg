@@ -6,7 +6,7 @@ from svgizer.llm import LLMConfig, get_provider
 @pytest.mark.llm
 def test_llm_client_basic_generation():
     client = get_provider("openai")
-    config = LLMConfig(model="gpt-4o-mini", temperature=0.0)
+    config = LLMConfig(model="gpt-5.4-nano", temperature=0.0)
 
     content_blocks = [
         {
