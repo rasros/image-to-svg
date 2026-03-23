@@ -23,8 +23,8 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
     setup_logger(worker_params["log_level"])
     log = logging.getLogger("worker")
 
-    # Use the refactored LLM Client
-    client = LLMClient()
+    api_key = worker_params.get("openai_api_key")
+    client = LLMClient(api_key=api_key) if api_key else LLMClient()
     scorer = get_scorer(worker_params["scorer_type"])
 
     original_rgb = Image.open(io.BytesIO(worker_params["original_png_bytes"])).convert(
@@ -32,13 +32,19 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
     )
     scoring_ref = scorer.prepare_reference(original_rgb)
 
+    worker_max_temp = worker_params.get("worker_max_temp", 1.6)
+    worker_temp_step = worker_params.get("worker_temp_step", 0.07)
+
     while True:
         task = task_q.get()
         if task is None:
             break
 
         parent = task.parent_state
-        temp = min(1.6, max(0.0, parent.model_temperature + (task.worker_slot * 0.07)))
+        temp = min(
+            worker_max_temp,
+            max(0.0, parent.model_temperature + (task.worker_slot * worker_temp_step)),
+        )
         config = LLMConfig(temperature=temp)
 
         try:
@@ -102,7 +108,7 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
             )
 
         except Exception as e:
-            log.error(f"Task {task.task_id} failed: {e}")
+            log.error(f"Task {task.task_id} failed: {e!r}")
             result_q.put(
                 Result(
                     task_id=task.task_id,
@@ -112,7 +118,7 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
                     score=INVALID_SCORE,
                     used_temperature=temp,
                     payload=SvgResultPayload(None, None, None),
-                    invalid_msg=str(e),
+                    invalid_msg=repr(e),
                     secondary_parent_id=task.secondary_parent_id,
                 )
             )
