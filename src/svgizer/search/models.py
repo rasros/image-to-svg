@@ -1,7 +1,7 @@
 import dataclasses
 from typing import Generic, TypeVar
 
-INVALID_SCORE = 1e9
+INVALID_SCORE = float("inf")
 
 TState = TypeVar("TState")
 TResultPayload = TypeVar("TResultPayload")
@@ -21,9 +21,7 @@ class SearchNode(Generic[TState]):
     id: int = dataclasses.field(compare=False)
     parent_id: int = dataclasses.field(compare=False)
     state: ChainState[TState] = dataclasses.field(compare=False)
-    secondary_parent_id: int | None = dataclasses.field(
-        default=None, compare=False
-    )  # Add this line
+    secondary_parent_id: int | None = dataclasses.field(default=None, compare=False)
 
 
 @dataclasses.dataclass
