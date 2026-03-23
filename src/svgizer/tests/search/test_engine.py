@@ -43,10 +43,6 @@ class FakeStorage:
     def save_final_svg(self, svg_content: str) -> None:
         _ = svg_content
 
-    def load_seed_svg(self, seed_path: str) -> str:
-        _ = seed_path
-        return ""
-
     def save_node(self, node: SearchNode) -> None:
         _ = node
         self.save_called = True

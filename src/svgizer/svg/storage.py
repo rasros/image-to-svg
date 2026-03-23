@@ -137,7 +137,3 @@ class FileStorageAdapter:
             f.write(svg_content)
 
         log.info(f"Updated best SVG at: {self.output_svg_path}")
-
-    def load_seed_svg(self, seed_path: str) -> str:
-        with Path(seed_path).open(encoding="utf-8") as f:
-            return f.read()

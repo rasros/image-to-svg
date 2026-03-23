@@ -46,8 +46,6 @@ class StorageAdapter(Protocol[TState]):
 
     def save_final_svg(self, svg_content: str) -> None: ...
 
-    def load_seed_svg(self, seed_path: str) -> str: ...
-
     @property
     def max_node_id(self) -> int:
         """Returns the highest ID currently known to the storage backend."""

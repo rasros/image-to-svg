@@ -25,9 +25,6 @@ def parse_args():
     parser.add_argument("image", help="Path to input raster image (PNG/JPEG/WEBP/GIF).")
 
     parser.add_argument("--output", "-o", default="output.svg", help="Final SVG path.")
-    parser.add_argument(
-        "--seed-svg", default=None, help="Path to an SVG file to seed the search pool."
-    )
 
     parser.add_argument(
         "--provider",
