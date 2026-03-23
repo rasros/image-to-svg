@@ -1,7 +1,6 @@
 import difflib
 import logging
 import random
-from typing import List, Optional
 
 from svgizer.models import SearchNode
 
@@ -17,7 +16,7 @@ def setup_logger(level: str) -> None:
     )
 
 
-def is_stale(prev_svg: Optional[str], new_svg: str) -> bool:
+def is_stale(prev_svg: str | None, new_svg: str) -> bool:
     if prev_svg is None:
         return False
     if prev_svg == new_svg:
@@ -31,7 +30,7 @@ def calculate_elite_prob(progress01: float, p_start: float, p_end: float) -> flo
     return float(p_start + (p_end - p_start) * progress01)
 
 
-def choose_from_top_k_weighted(best_k: List[SearchNode]) -> int:
+def choose_from_top_k_weighted(best_k: list[SearchNode]) -> int:
     if not best_k:
         return 0
     weights = [1.0 / (i + 1.0) for i in range(len(best_k))]

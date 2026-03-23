@@ -1,26 +1,25 @@
 import io
 import logging
 import os
-from typing import Optional
 
 from PIL import Image
 
-from svgizer.diff import get_scorer, ScorerType
+from svgizer.diff import ScorerType, get_scorer
 from svgizer.image_utils import (
     downscale_png_bytes,
+    make_preview_data_url,
     png_bytes_to_data_url,
     rasterize_svg_to_png_bytes,
-    make_preview_data_url,
 )
-from svgizer.models import ChainState, SearchNode, INVALID_SCORE
+from svgizer.models import INVALID_SCORE, ChainState, SearchNode
 from svgizer.openai_iface import is_valid_svg
 from svgizer.search import StrategyType
-from svgizer.storage import StorageAdapter
-from svgizer.utils import setup_logger
+from svgizer.search.engine import MultiprocessSearchEngine
 
 # New imports from the decoupled search package
 from svgizer.search.genetic import GeneticPoolStrategy
-from svgizer.search.engine import MultiprocessSearchEngine
+from svgizer.storage import StorageAdapter
+from svgizer.utils import setup_logger
 
 log = logging.getLogger("main")
 
@@ -28,16 +27,16 @@ log = logging.getLogger("main")
 def run_search(
     image_path: str,
     storage: StorageAdapter,
-    seed_svg_path: Optional[str],
+    seed_svg_path: str | None,
     max_accepts: int,
     workers: int,
     base_model_temperature: float,
     openai_image_long_side: int,
-    max_wall_seconds: Optional[float],
+    max_wall_seconds: float | None,
     log_level: str,
     scorer_type: ScorerType,
     strategy: StrategyType,
-    goal: Optional[str],
+    goal: str | None,
 ) -> None:
     """
     Main entry point for the SVG optimization search.

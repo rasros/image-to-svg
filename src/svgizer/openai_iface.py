@@ -1,9 +1,7 @@
-from typing import Optional, List
 import os
 import xml.etree.ElementTree as ET
 
 from openai import OpenAI
-
 
 MODEL_NAME = os.getenv("SVGIZER_OPENAI_MODEL", "gpt-5.4")
 
@@ -32,7 +30,7 @@ def summarize_changes(
     client: OpenAI,
     original_data_url: str,
     iter_index: int,
-    rasterized_svg_data_url: Optional[str],
+    rasterized_svg_data_url: str | None,
 ) -> str:
     lines = [
         "Compare the original image (first) to the current SVG render (second).",
@@ -41,7 +39,7 @@ def summarize_changes(
         "Output ONLY the bullet points.",
     ]
 
-    content: List[dict] = [
+    content: list[dict] = [
         {"type": "input_text", "text": "\n".join(lines)},
         {"type": "input_image", "image_url": original_data_url},
     ]
@@ -63,12 +61,12 @@ def call_openai_for_svg(
     original_data_url: str,
     iter_index: int,
     temperature: float,
-    svg_prev: Optional[str] = None,
-    svg_prev_invalid_msg: Optional[str] = None,
-    rasterized_svg_data_url: Optional[str] = None,
-    change_summary: Optional[str] = None,
-    diversity_hint: Optional[str] = None,
-    custom_goal: Optional[str] = None,
+    svg_prev: str | None = None,
+    svg_prev_invalid_msg: str | None = None,
+    rasterized_svg_data_url: str | None = None,
+    change_summary: str | None = None,
+    diversity_hint: str | None = None,
+    custom_goal: str | None = None,
 ) -> str:
     lines = [
         "You are a world-class SVG developer. Convert the input raster into a CLEAN, optimized SVG.",
@@ -84,7 +82,6 @@ def call_openai_for_svg(
         lines.append("USER SPECIFIC GOAL/INSTRUCTION:")
         lines.append(custom_goal)
         lines.append("Prioritize the above goal during this generation pass.")
-
 
     if diversity_hint:
         lines.append(f"Diversity hint: {diversity_hint}")
@@ -119,7 +116,7 @@ def call_openai_for_svg(
         lines.append("CURRENT SVG CODE TO MODIFY:")
         lines.append(svg_prev)
 
-    content: List[dict] = [
+    content: list[dict] = [
         {"type": "input_text", "text": "\n".join(lines)},
         {"type": "input_image", "image_url": original_data_url},
     ]
@@ -159,7 +156,7 @@ def call_openai_for_crossover(
         svg_b,
     ]
 
-    content: List[dict] = [
+    content: list[dict] = [
         {"type": "input_text", "text": "\n".join(lines)},
         {"type": "input_image", "image_url": original_data_url},
     ]

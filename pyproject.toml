@@ -41,7 +41,7 @@ markers = [
 ]
 
 [tool.pyrefly]
-include = ["src"]
+project-includes = ["src/**/*.py"]
 
 [tool.ruff]
 target-version = "py310"

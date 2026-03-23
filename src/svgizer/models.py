@@ -1,22 +1,20 @@
 from __future__ import annotations
 
 import dataclasses
-from typing import Optional
-
 
 INVALID_SCORE = 1e9
 
 
 @dataclasses.dataclass
 class ChainState:
-    svg: Optional[str]
-    raster_data_url: Optional[str]  # FULL-res (for lineage / inspection)
-    raster_preview_data_url: Optional[str]  # DOWNSCALED (for OpenAI)
+    svg: str | None
+    raster_data_url: str | None  # FULL-res (for lineage / inspection)
+    raster_preview_data_url: str | None  # DOWNSCALED (for OpenAI)
     score: float
     model_temperature: float
     stale_hits: int
-    invalid_msg: Optional[str]
-    change_summary: Optional[str] = None
+    invalid_msg: str | None
+    change_summary: str | None = None
 
 
 @dataclasses.dataclass(order=True)
@@ -33,8 +31,8 @@ class Task:
     parent_id: int
     parent_state: ChainState
     worker_slot: int  # used only for diversity/jitter
-    secondary_parent_id: Optional[int] = None
-    secondary_parent_state: Optional[ChainState] = None
+    secondary_parent_id: int | None = None
+    secondary_parent_state: ChainState | None = None
 
 
 @dataclasses.dataclass
@@ -42,11 +40,11 @@ class Result:
     task_id: int
     parent_id: int
     worker_slot: int
-    svg: Optional[str]
+    svg: str | None
     valid: bool
-    invalid_msg: Optional[str]
-    raster_png: Optional[bytes]
+    invalid_msg: str | None
+    raster_png: bytes | None
     score: float
     used_temperature: float
-    change_summary: Optional[str]
-    secondary_parent_id: Optional[int] = None
+    change_summary: str | None
+    secondary_parent_id: int | None = None

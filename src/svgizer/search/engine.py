@@ -1,12 +1,12 @@
 import logging
 import multiprocessing as mp
-import time
 import queue
-from typing import List, Optional, Tuple
+import time
 
-from svgizer.models import SearchNode, Task, Result
-from svgizer.image_utils import png_bytes_to_data_url, make_preview_data_url
+from svgizer.image_utils import make_preview_data_url, png_bytes_to_data_url
+from svgizer.models import Result, SearchNode, Task
 from svgizer.worker import worker_loop
+
 from .base import SearchStrategy
 
 log = logging.getLogger(__name__)
@@ -45,11 +45,11 @@ class MultiprocessSearchEngine:
 
     def run(
         self,
-        initial_nodes: List[SearchNode],
+        initial_nodes: list[SearchNode],
         max_accepts: int,
-        max_wall_seconds: Optional[float],
+        max_wall_seconds: float | None,
         openai_image_long_side: int,
-        original_dims: Tuple[int, int],
+        original_dims: tuple[int, int],
     ):
         start_time = time.monotonic()
         node_states = {n.id: n.state for n in initial_nodes}

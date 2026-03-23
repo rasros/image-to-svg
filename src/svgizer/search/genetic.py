@@ -1,7 +1,7 @@
 import random
-from typing import List, Tuple, Optional
-from svgizer.models import SearchNode, ChainState, Result
-from svgizer.utils import is_stale, calculate_elite_prob, choose_from_top_k_weighted
+
+from svgizer.models import ChainState, Result, SearchNode
+from svgizer.utils import calculate_elite_prob, choose_from_top_k_weighted, is_stale
 
 
 class GeneticPoolStrategy:
@@ -30,8 +30,8 @@ class GeneticPoolStrategy:
         return self.top_k
 
     def select_parent(
-        self, nodes: List[SearchNode], progress: float
-    ) -> Tuple[int, Optional[int]]:
+        self, nodes: list[SearchNode], progress: float
+    ) -> tuple[int, int | None]:
         if not nodes:
             return 0, None
 

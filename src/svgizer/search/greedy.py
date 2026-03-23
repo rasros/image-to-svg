@@ -1,5 +1,4 @@
-from typing import List, Tuple, Optional
-from svgizer.models import SearchNode, ChainState, Result
+from svgizer.models import ChainState, Result, SearchNode
 
 
 class GreedyHillClimbingStrategy:
@@ -20,8 +19,8 @@ class GreedyHillClimbingStrategy:
         return 1
 
     def select_parent(
-        self, nodes: List[SearchNode], progress: float
-    ) -> Tuple[int, Optional[int]]:
+        self, nodes: list[SearchNode], progress: float
+    ) -> tuple[int, int | None]:
         if not nodes:
             return 0, None
 

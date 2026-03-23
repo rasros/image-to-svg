@@ -2,7 +2,7 @@ import csv
 import logging
 import os
 import re
-from typing import Dict, List, Optional, Tuple, Protocol
+from typing import Protocol
 
 from svgizer.image_utils import make_preview_data_url, rasterize_svg_to_png_bytes
 from svgizer.models import ChainState, SearchNode
@@ -23,7 +23,7 @@ class StorageAdapter(Protocol):
     def save_node(self, node: SearchNode) -> str: ...
 
     def write_lineage(
-        self, node_info: Dict[int, Tuple[int, float, str, Optional[str]]]
+        self, node_info: dict[int, tuple[int, float, str, str | None]]
     ) -> None: ...
 
     def load_resume_nodes(
@@ -33,7 +33,7 @@ class StorageAdapter(Protocol):
         original_w: int,
         original_h: int,
         openai_image_long_side: int,
-    ) -> Tuple[List[SearchNode], Optional[SearchNode], int]: ...
+    ) -> tuple[list[SearchNode], SearchNode | None, int]: ...
 
     def save_final_svg(self, svg_content: str) -> None: ...
 
@@ -78,7 +78,7 @@ class FileStorageAdapter:
         return iter_path
 
     def write_lineage(
-        self, node_info: Dict[int, Tuple[int, float, str, Optional[str]]]
+        self, node_info: dict[int, tuple[int, float, str, str | None]]
     ) -> None:
         if not self._write_lineage_enabled:
             return
@@ -100,15 +100,15 @@ class FileStorageAdapter:
         original_w: int,
         original_h: int,
         openai_image_long_side: int,
-    ) -> Tuple[List[SearchNode], Optional[SearchNode], int]:
+    ) -> tuple[list[SearchNode], SearchNode | None, int]:
         if not self.resume:
             return [], None, 0
 
-        accepted: List[SearchNode] = []
-        best_seen: Optional[SearchNode] = None
+        accepted: list[SearchNode] = []
+        best_seen: SearchNode | None = None
         max_id = 0
 
-        scan_paths: List[Tuple[str, str]] = []
+        scan_paths: list[tuple[str, str]] = []
         if os.path.isdir(self.nodes_dir):
             scan_paths.append((self.nodes_dir, "new"))
         scan_paths.append((self.out_dir, "old"))
@@ -140,7 +140,7 @@ class FileStorageAdapter:
                     parent_id = 0
 
                 try:
-                    with open(path, "r", encoding="utf-8") as f:
+                    with open(path, encoding="utf-8") as f:
                         svg = f.read()
                     full_png = rasterize_svg_to_png_bytes(
                         svg, out_w=original_w, out_h=original_h
@@ -179,5 +179,5 @@ class FileStorageAdapter:
             f.write(svg_content)
 
     def load_seed_svg(self, seed_path: str) -> str:
-        with open(seed_path, "r", encoding="utf-8") as f:
+        with open(seed_path, encoding="utf-8") as f:
             return f.read()

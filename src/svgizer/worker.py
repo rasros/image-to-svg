@@ -2,20 +2,20 @@ import io
 import logging
 import multiprocessing as mp
 import os
-from typing import Any, Optional
+from typing import Any
 
 from openai import OpenAI
 from PIL import Image
 
 from svgizer.diff import get_scorer
 from svgizer.image_utils import rasterize_svg_to_png_bytes
-from svgizer.models import Result, Task, INVALID_SCORE
+from svgizer.models import INVALID_SCORE, Result, Task
 from svgizer.openai_iface import (
-    summarize_changes,
-    call_openai_for_svg,
     call_openai_for_crossover,
+    call_openai_for_svg,
     extract_svg_fragment,
     is_valid_svg,
+    summarize_changes,
 )
 from svgizer.utils import setup_logger
 
@@ -32,7 +32,7 @@ def worker_loop(
     openai_image_long_side: int,
     log_level: str,
     scorer_type: str,
-    goal: Optional[str]
+    goal: str | None,
 ):
     setup_logger(log_level)
     log = logging.getLogger("worker")
@@ -122,7 +122,7 @@ def worker_loop(
                     rasterized_svg_data_url=parent_preview_data_url,
                     change_summary=change_summary,
                     diversity_hint=f"parent={task.parent_id} worker={task.worker_slot}",
-                    custom_goal=goal
+                    custom_goal=goal,
                 )
                 svg = extract_svg_fragment(raw)
             except Exception as e:
