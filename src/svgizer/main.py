@@ -1,26 +1,27 @@
 import os
 import sys
 
+from svgizer.search.base import StrategyType
+from svgizer.svg.runner import run_svg_search
+from svgizer.svg.storage import FileStorageAdapter
+
 from .cli import parse_args
-from .pipeline import run_svg_search
-from .storage import FileStorageAdapter
 
 
 def main():
     args = parse_args()
 
-    # Safety check for the primary dependency
     if not os.getenv("OPENAI_API_KEY"):
         print(
             "CRITICAL: OPENAI_API_KEY environment variable is not set.", file=sys.stderr
         )
         raise SystemExit(1)
 
-    # Initialize the storage adapter (Strategy-agnostic)
     storage = FileStorageAdapter(
         output_svg_path=args.output,
-        write_lineage=args.write_lineage,
         resume=args.resume,
+        openai_image_long_side=args.openai_image_long_side,
+        base_temp=args.model_temp,
     )
 
     try:
@@ -35,8 +36,9 @@ def main():
             max_wall_seconds=args.max_wall_seconds,
             log_level=args.log_level,
             scorer_type=args.scorer,
-            strategy_type=args.strategy,
+            strategy_type=StrategyType(args.strategy),
             goal=args.goal,
+            write_lineage=args.write_lineage,
         )
     except KeyboardInterrupt:
         print("\nSearch interrupted by user. Exiting safely...", file=sys.stderr)

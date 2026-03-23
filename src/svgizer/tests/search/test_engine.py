@@ -22,10 +22,7 @@ class FakeStrategy:
 class FakeStorage:
     def __init__(self):
         self.save_called = False
-
-    @property
-    def max_node_id(self) -> int:
-        return 0
+        self.max_node_id = 1
 
     def initialize(self) -> None:
         pass
@@ -48,9 +45,11 @@ def test_engine_init():
     assert engine.workers == 2
 
 
-def test_engine_run_loop_terminates_on_max_accepts(monkeypatch):
+def test_engine_run_loop_terminates_on_max_accepts():
     strat = FakeStrategy()
     store = FakeStorage()
+
+    engine = MultiprocessSearchEngine(workers=1, strategy=strat, storage=store)
 
     res = Result(
         task_id=1,
@@ -61,12 +60,7 @@ def test_engine_run_loop_terminates_on_max_accepts(monkeypatch):
         used_temperature=0.6,
         payload="fake_payload",
     )
-
-    engine = MultiprocessSearchEngine(1, strat, store)
-
-    # Use **_kwargs to handle the 'timeout' parameter used in engine.py
-    monkeypatch.setattr(engine.result_q, "get", lambda **_kwargs: res)
-    monkeypatch.setattr(engine.task_q, "put", lambda _obj: None)
+    engine.result_q.put(res)
 
     initial_node = SearchNode(
         score=0.8,

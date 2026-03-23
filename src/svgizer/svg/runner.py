@@ -14,6 +14,7 @@ from svgizer.search import (
     INVALID_SCORE,
     ChainState,
     GeneticPoolStrategy,
+    GreedyHillClimbingStrategy,
     MultiprocessSearchEngine,
     SearchNode,
     StorageAdapter,
@@ -39,6 +40,7 @@ def run_svg_search(
     scorer_type: ScorerType,
     strategy_type: StrategyType,
     goal: str | None,
+    write_lineage: bool = True,
 ) -> None:
     setup_logger(log_level)
 
@@ -57,8 +59,6 @@ def run_svg_search(
     storage.initialize()
     initial_nodes = storage.load_resume_nodes()
 
-    # Optional: If you want to force re-scoring of resume nodes to ensure consistency
-    # with the current scorer settings, you can do it here.
     if initial_nodes:
         log.info(f"Resumed {len(initial_nodes)} nodes from storage.")
 
@@ -112,8 +112,12 @@ def run_svg_search(
         )
 
     # 4. Search Execution
-    base_strategy = GeneticPoolStrategy(top_k=3, is_stale_fn=is_svg_stale)
-    strategy = SvgStrategyAdapter(base_strategy, openai_image_long_side, False)
+    if strategy_type == StrategyType.GREEDY:
+        base_strategy = GreedyHillClimbingStrategy()
+    else:
+        base_strategy = GeneticPoolStrategy(top_k=3, is_stale_fn=is_svg_stale)
+
+    strategy = SvgStrategyAdapter(base_strategy, openai_image_long_side, write_lineage)
 
     engine = MultiprocessSearchEngine(
         workers=workers, strategy=strategy, storage=storage

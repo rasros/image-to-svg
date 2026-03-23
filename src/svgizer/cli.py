@@ -29,7 +29,7 @@ def parse_args():
     # Scorer Configuration
     parser.add_argument(
         "--scorer",
-        type=ScorerType,
+        type=str,
         choices=[e.value for e in ScorerType],
         default=ScorerType.AUTO.value,
         help="Difference scoring backend (dreamsim, simple, llm, or auto).",
@@ -37,7 +37,7 @@ def parse_args():
 
     parser.add_argument(
         "--strategy",
-        type=StrategyType,
+        type=str,
         choices=[e.value for e in StrategyType],
         default=StrategyType.GENETIC.value,
         help="Search strategy/evolution algorithm to use.",
@@ -105,11 +105,9 @@ def parse_args():
 
     args = parser.parse_args()
 
-    # Logic conversion for wall time
     if args.max_wall_seconds is not None and args.max_wall_seconds <= 0:
         args.max_wall_seconds = None
 
-    # Bounds validation
     if args.max_accepts <= 0 or args.workers <= 0:
         raise SystemExit("Error: --max-accepts and --workers must be > 0")
     if args.model_temp < 0 or args.openai_image_long_side < 0:

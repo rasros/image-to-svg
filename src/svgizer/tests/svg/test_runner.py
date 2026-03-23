@@ -1,80 +1,44 @@
-import io
-import logging
-
+import pytest
 from PIL import Image
 
-from svgizer.diff import DiffScorer, ScorerType, get_scorer
-from svgizer.image_utils import (
-    downscale_png_bytes,
-    png_bytes_to_data_url,
-)
-from svgizer.search import (
-    GeneticPoolStrategy,
-    MultiprocessSearchEngine,
-    StorageAdapter,
-    StrategyType,
-)
-from svgizer.svg.adapter import SvgStrategyAdapter, is_svg_stale
-from svgizer.svg.worker import worker_loop
-from svgizer.utils import setup_logger
-
-log = logging.getLogger("main")
+from svgizer.diff import ScorerType
+from svgizer.search import StrategyType
+from svgizer.svg.runner import run_svg_search
+from svgizer.svg.storage import FileStorageAdapter
 
 
-def run_svg_search(
-    image_path: str,
-    storage: StorageAdapter,
-    seed_svg_path: str | None,
-    max_accepts: int,
-    workers: int,
-    base_model_temperature: float,
-    openai_image_long_side: int,
-    max_wall_seconds: float | None,
-    log_level: str,
-    scorer_type: ScorerType,
-    strategy_type: StrategyType,
-    goal: str | None,
-    # --- Actual Code DI Hooks ---
-    engine_cls: type[MultiprocessSearchEngine] = MultiprocessSearchEngine,
-    scorer_override: DiffScorer | None = None,
-) -> None:
-    setup_logger(log_level)
+@pytest.mark.llm
+def test_run_svg_search_end_to_end(tmp_path):
+    img_path = tmp_path / "test.png"
+    img = Image.new("RGB", (32, 32), color="blue")
+    img.save(img_path)
 
-    original_img = Image.open(image_path).convert("RGB")
-    original_w, original_h = original_img.size
+    out_svg_path = tmp_path / "output.svg"
+    storage = FileStorageAdapter(
+        output_svg_path=str(out_svg_path),
+        resume=False,
+        openai_image_long_side=64,
+        base_temp=0.0,
+    )
 
-    buf = io.BytesIO()
-    original_img.save(buf, format="PNG")
-    original_png_bytes = buf.getvalue()
+    run_svg_search(
+        image_path=str(img_path),
+        storage=storage,
+        seed_svg_path=None,
+        max_accepts=1,
+        workers=1,
+        base_model_temperature=0.0,
+        openai_image_long_side=64,
+        max_wall_seconds=None,
+        log_level="DEBUG",
+        scorer_type=ScorerType.SIMPLE,
+        strategy_type=StrategyType.GREEDY,
+        goal="Generate a simple blue rectangle.",
+        write_lineage=False,
+    )
 
-    # Use override if provided (useful for tests)
-    scorer = scorer_override or get_scorer(scorer_type)
-    scorer.prepare_reference(original_img)
+    assert out_svg_path.is_file(), "Final SVG file was not saved to storage."
 
-    storage.initialize()
-    initial_nodes = storage.load_resume_nodes()
-
-    # ... [Seed handling logic remains same] ...
-
-    base_strategy = GeneticPoolStrategy(top_k=3, is_stale_fn=is_svg_stale)
-    strategy = SvgStrategyAdapter(base_strategy, openai_image_long_side, False)
-
-    # Use the injected engine class
-    engine = engine_cls(workers=workers, strategy=strategy, storage=storage)
-
-    model_png = downscale_png_bytes(original_png_bytes, openai_image_long_side)
-    worker_params = {
-        "openai_original_data_url": png_bytes_to_data_url(model_png),
-        "original_png_bytes": original_png_bytes,
-        "original_w": original_w,
-        "original_h": original_h,
-        "log_level": log_level,
-        "scorer_type": scorer_type,
-        "goal": goal,
-    }
-
-    engine.start_workers(worker_loop, worker_params)
-    best_node = engine.run(initial_nodes, max_accepts, max_wall_seconds)
-
-    if best_node and best_node.state.payload.svg:
-        storage.save_final_svg(best_node.state.payload.svg)
+    with out_svg_path.open(encoding="utf-8") as f:
+        content = f.read().lower()
+        assert "<svg" in content, "Output does not contain valid SVG syntax."
