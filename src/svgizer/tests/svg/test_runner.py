@@ -24,10 +24,10 @@ def test_run_svg_search_end_to_end(tmp_path):
     run_svg_search(
         image_path=str(img_path),
         storage=storage,
-        seed_svg_path=None,
         max_accepts=1,
         workers=1,
         base_model_temperature=0.0,
+        cooling_rate=0.9,
         image_long_side=64,
         max_wall_seconds=None,
         log_level="DEBUG",
