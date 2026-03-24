@@ -12,6 +12,8 @@ log = logging.getLogger(__name__)
 
 
 class FileStorageAdapter:
+    RESUME_TOP_K = 4
+
     def __init__(
         self,
         output_svg_path: str,
@@ -51,7 +53,7 @@ class FileStorageAdapter:
     def load_resume_nodes(self) -> list[tuple[int, str]]:
         """
         Only if resume is true, check the latest past run directory
-        and ingest all SVGs found in its 'nodes' folder.
+        and ingest the top K SVGs found in its 'nodes' folder.
         """
         if not self.resume or not self.runs_dir.exists():
             return []
@@ -77,24 +79,41 @@ class FileStorageAdapter:
             log.warning(f"Latest run {latest_run.name} has no 'nodes' directory.")
             return []
 
-        log.info(f"Resuming nodes from latest run: {latest_run.name}")
+        log.info(
+            f"Resuming top {self.RESUME_TOP_K} nodes from latest run: {latest_run.name}"
+        )
+
+        file_pattern = re.compile(r"score([0-9.]+)_node(\d+)")
+        parsed_files = []
+
+        for file_path in target_nodes_dir.glob("*.svg"):
+            match = file_pattern.search(file_path.name)
+            if match:
+                score = float(match.group(1))
+                node_id = int(match.group(2))
+            else:
+                # Fallback if filename format is unexpected
+                score = float("inf")
+                id_match = re.search(r"node(\d+)", file_path.name)
+                node_id = int(id_match.group(1)) if id_match else (self._max_id + 1)
+
+            self._max_id = max(self._max_id, node_id)
+            parsed_files.append((score, node_id, file_path))
+
+        # Sort by score ascending (lower is better) and take top K
+        parsed_files.sort(key=lambda x: x[0])
+        top_k_files = parsed_files[: self.RESUME_TOP_K]
 
         resumed_data = []
-        id_pattern = re.compile(r"node(\d+)")
-
-        for file_path in sorted(target_nodes_dir.glob("*.svg")):
+        for score, node_id, file_path in top_k_files:
             try:
                 content = file_path.read_text(encoding="utf-8").strip()
-                if not content:
-                    continue
-
-                # Use ID from name if found, otherwise increment
-                match = id_pattern.search(file_path.name)
-                node_id = int(match.group(1)) if match else (self._max_id + 1)
-
-                resumed_data.append((node_id, content))
-                self._max_id = max(self._max_id, node_id)
-                log.info(f"Found node for resume: {file_path.name} (ID: {node_id})")
+                if content:
+                    resumed_data.append((node_id, content))
+                    log.info(
+                        f"Found node for resume: "
+                        f"{file_path.name} (ID: {node_id}, Score: {score})"
+                    )
             except Exception as e:
                 log.error(f"Failed to read resume node {file_path.name}: {e}")
 
@@ -123,7 +142,7 @@ class FileStorageAdapter:
         # 2. Save PNG (crucial for LLM vision context on next resume)
         if node.state.payload.raster_preview_data_url:
             try:
-                header, encoded = node.state.payload.raster_preview_data_url.split(
+                _header, encoded = node.state.payload.raster_preview_data_url.split(
                     ",", 1
                 )
                 png_path = self.nodes_dir / f"{base_fn}.png"
