@@ -78,7 +78,7 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
                     parent.payload.raster_preview_data_url
                     or parent.payload.raster_data_url
                 )
-                # If there's no SVG yet, default the change_summary to the goal.
+
                 change_summary = worker_params.get("goal")
 
                 if parent.payload.svg:
@@ -88,6 +88,7 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
                         worker_params["image_data_url"],
                         parent_preview,
                         custom_goal=worker_params.get("goal"),
+                        previous_summary=parent.payload.change_summary,
                     )
                     sum_config = LLMConfig(
                         model=model_name, temperature=sum_temp, reasoning=reasoning

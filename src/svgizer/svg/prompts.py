@@ -33,7 +33,7 @@ def build_svg_gen_prompt(
             )
 
     if change_summary:
-        lines.extend(["PRIORITY FIXES:", change_summary])
+        lines.extend(["PRIORITY FIXES FROM JUDGE:", change_summary])
 
     if svg_prev is not None:
         lines.extend(["CURRENT SVG CODE TO MODIFY:", svg_prev])
@@ -51,20 +51,31 @@ def build_summarize_prompt(
     original_data_url: str,
     rasterized_svg_data_url: str | None,
     custom_goal: str | None = None,
+    previous_summary: str | None = None,
 ) -> list[dict[str, Any]]:
     lines = [
-        "Compare the original image (first) to the current SVG render (second).",
-        "Provide 3-5 concise, actionable bullet points to improve the likeness.",
+        "You are a technical design critic. Compare the original image (first) "
+        "to the current SVG render (second).",
+        "Provide 3-5 concise, technical bullet points to improve the likeness.",
+        "GUIDELINES:",
+        "- Use SVG terminology: refer to 'stroke-width', 'opacity', 'coordinates', or 'viewBox'.",
+        "- Categorize feedback: [Geometry/Layout], [Typography/Text], or [Color/Style].",
+        "- Be spatially specific: instead of 'move up', say 'shift the y-coordinate higher'.",
     ]
 
+    if previous_summary:
+        lines.extend([
+            "PREVIOUS FEEDBACK GIVEN:",
+            previous_summary,
+            "Identify if these points were ignored and emphasize them if still relevant."
+        ])
+
     if custom_goal:
-        lines.extend(
-            [
-                "USER SPECIFIC GOAL:",
-                custom_goal,
-                "Prioritize this instruction when generating your bullet points.",
-            ]
-        )
+        lines.extend([
+            "USER SPECIFIC GOAL:",
+            custom_goal,
+            "Prioritize this instruction over all other visual improvements.",
+        ])
 
     lines.append("Output ONLY the bullet points.")
 
