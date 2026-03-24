@@ -41,6 +41,7 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
 
     except Exception as e:
         log.critical(f"Worker failed initialization: {e!r}")
+        result_q.put({"init_error": repr(e)})
         return
 
     while True:

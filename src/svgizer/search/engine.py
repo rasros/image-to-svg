@@ -101,7 +101,7 @@ class MultiprocessSearchEngine(Generic[TState]):
                     in_flight += 1
 
                 try:
-                    res: Result = self.result_q.get(timeout=0.2)
+                    res = self.result_q.get(timeout=0.2)
                 except queue.Empty:
                     if not any(p.is_alive() for p in self.procs):
                         raise RuntimeError(
@@ -109,6 +109,11 @@ class MultiprocessSearchEngine(Generic[TState]):
                             "initialization errors (missing API keys, etc)."
                         ) from None
                     continue
+
+                if isinstance(res, dict) and "init_error" in res:
+                    raise RuntimeError(
+                        f"Worker initialization failed: {res['init_error']}"
+                    )
 
                 in_flight -= 1
                 tasks_completed += 1
