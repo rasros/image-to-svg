@@ -40,9 +40,6 @@ class FakeStorage:
     def load_resume_nodes(self) -> list:
         return []
 
-    def save_final_svg(self, svg_content: str) -> None:
-        _ = svg_content
-
     def save_node(self, node: SearchNode) -> None:
         _ = node
         self.save_called = True
@@ -77,12 +74,10 @@ def test_engine_run_loop_terminates_on_max_accepts():
         state=ChainState(score=0.8, model_temperature=0.6, stale_hits=0, payload=None),
     )
 
-    best = engine.run(
+    engine.run(
         initial_nodes=[initial_node],
         max_accepts=1,
         max_wall_seconds=None,
     )
 
-    assert best is not None
-    assert best.score == 0.1
     assert store.save_called is True

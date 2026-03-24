@@ -46,7 +46,7 @@ class MultiprocessSearchEngine(Generic[TState]):
         initial_nodes: list[SearchNode[TState]],
         max_accepts: int,
         max_wall_seconds: float | None,
-    ) -> SearchNode[TState] | None:
+    ) -> None:
         start_time = time.monotonic()
         node_states = {n.id: n.state for n in initial_nodes}
         accepted_nodes = list(initial_nodes)
@@ -149,8 +149,6 @@ class MultiprocessSearchEngine(Generic[TState]):
 
         finally:
             self._shutdown()
-
-        return best_node
 
     def _shutdown(self) -> None:
         log.info("Shutting down workers...")

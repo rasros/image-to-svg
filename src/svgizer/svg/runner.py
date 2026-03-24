@@ -153,7 +153,4 @@ def run_svg_search(
     }
 
     engine.start_workers(worker_loop, worker_params)
-    best_node = engine.run(initial_nodes, max_accepts, max_wall_seconds)
-
-    if best_node and best_node.state.payload.svg:
-        storage.save_final_svg(best_node.state.payload.svg)
+    engine.run(initial_nodes, max_accepts, max_wall_seconds)

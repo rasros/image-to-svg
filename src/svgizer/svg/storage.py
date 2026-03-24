@@ -12,7 +12,7 @@ log = logging.getLogger(__name__)
 
 
 class FileStorageAdapter:
-    RESUME_TOP_K = 4
+    RESUME_TOP_K = 8
 
     def __init__(
         self,
@@ -168,14 +168,3 @@ class FileStorageAdapter:
                     node.state.payload.change_summary or "",
                 ]
             )
-
-    def save_final_svg(self, svg_content: str) -> None:
-        # Write to the main output path
-        self.output_svg_path.write_text(svg_content, encoding="utf-8")
-
-        # Keep a backup in the project folder
-        self.project_dir.mkdir(parents=True, exist_ok=True)
-        backup_path = self.project_dir / f"best_{self.output_svg_path.name}"
-        backup_path.write_text(svg_content, encoding="utf-8")
-
-        log.info(f"Final SVG saved to: {self.output_svg_path}")
