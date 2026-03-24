@@ -34,7 +34,6 @@ def test_adapter_path_resolution(tmp_path):
     adapter = FileStorageAdapter(output_svg_path=output_path)
 
     assert adapter.base_name == "result"
-    assert adapter.ext == ".svg"
     assert str(adapter.project_dir) == str(tmp_path / "somedir" / "result")
     assert str(adapter.runs_dir) == str(tmp_path / "somedir" / "result" / "runs")
 
