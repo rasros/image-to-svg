@@ -64,6 +64,7 @@ def main():
             max_accepts=args.max_accepts,
             workers=args.workers,
             base_model_temperature=args.temperature,
+            temp_step=args.temp_step,
             cooling_rate=args.cooling_rate,
             image_long_side=args.image_long_side,
             max_wall_seconds=args.max_wall_seconds,

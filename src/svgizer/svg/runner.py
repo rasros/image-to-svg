@@ -34,6 +34,7 @@ def run_svg_search(
     max_accepts: int,
     workers: int,
     base_model_temperature: float,
+    temp_step: float,
     cooling_rate: float,
     image_long_side: int,
     max_wall_seconds: float | None,
@@ -148,8 +149,10 @@ def run_svg_search(
         "llm_model": llm_model,
         "reasoning": reasoning,
         "api_key": os.getenv(api_key_env_var),
+        "base_temperature": base_model_temperature,
+        "total_workers": workers,
         "worker_max_temp": 1.6,
-        "worker_temp_step": 0.07,
+        "worker_temp_step": temp_step,
     }
 
     engine.start_workers(worker_loop, worker_params)

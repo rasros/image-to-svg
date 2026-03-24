@@ -6,6 +6,7 @@ from svgizer.search import StrategyType
 DEFAULT_MAX_ACCEPTS = 32
 DEFAULT_WORKERS = 4
 DEFAULT_TEMPERATURE = 1.0
+DEFAULT_TEMP_STEP = 0.25
 DEFAULT_COOLING_RATE = 0.9
 DEFAULT_MAX_WALL_SECONDS = 0
 DEFAULT_RESUME = True
@@ -92,6 +93,12 @@ def parse_args():
         help="Base LLM temperature for generation.",
     )
     parser.add_argument(
+        "--temp-step",
+        type=float,
+        default=DEFAULT_TEMP_STEP,
+        help="Temperature spread variance between concurrent workers.",
+    )
+    parser.add_argument(
         "--cooling-rate",
         type=float,
         default=DEFAULT_COOLING_RATE,
@@ -138,7 +145,7 @@ def parse_args():
 
     if args.max_accepts <= 0 or args.workers <= 0:
         raise SystemExit("Error: --max-accepts and --workers must be > 0")
-    if args.temperature < 0 or args.image_long_side < 0:
+    if args.temperature < 0 or args.temp_step < 0 or args.image_long_side < 0:
         raise SystemExit("Error: Configuration values cannot be negative")
     if not (0.1 <= args.cooling_rate <= 1.0):
         raise SystemExit("Error: --cooling-rate must be between 0.1 and 1.0")

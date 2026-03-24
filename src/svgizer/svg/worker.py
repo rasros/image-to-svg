@@ -18,8 +18,6 @@ from svgizer.svg.prompts import (
 )
 from svgizer.utils import setup_logger
 
-_SUMMARY_TEMP_MULTIPLIER = 1.2
-
 
 def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
     setup_logger(worker_params["log_level"])
@@ -40,7 +38,6 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
         scoring_ref = scorer.prepare_reference(original_rgb)
 
         worker_max_temp = worker_params.get("worker_max_temp", 1.6)
-        worker_temp_step = worker_params.get("worker_temp_step", 0.07)
 
     except Exception as e:
         log.critical(f"Worker failed initialization: {e!r}")
@@ -52,16 +49,22 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
             break
 
         parent = task.parent_state
-        # Base slot offset logic
+
+        worker_temp_step = worker_params.get("worker_temp_step", 0.25)
+        total_workers = worker_params.get("total_workers", 1)
+
+        slot_offset = task.worker_slot - ((total_workers - 1) / 2.0)
+
         temp = min(
             worker_max_temp,
-            max(0.0, parent.model_temperature + (task.worker_slot * worker_temp_step)),
+            max(0.0, parent.model_temperature + (slot_offset * worker_temp_step)),
         )
 
         try:
             if task.secondary_parent_state:
+                crossover_temp = 0.2
                 config = LLMConfig(
-                    model=model_name, temperature=temp, reasoning=reasoning
+                    model=model_name, temperature=crossover_temp, reasoning=reasoning
                 )
                 prompt = build_crossover_prompt(
                     worker_params["image_data_url"],
@@ -79,8 +82,8 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
                 change_summary = worker_params.get("goal")
 
                 if parent.payload.svg:
-                    # Bump summary temperature
-                    sum_temp = min(worker_max_temp, temp * _SUMMARY_TEMP_MULTIPLIER)
+                    # Summary generation runs rigidly at base temp
+                    sum_temp = worker_params.get("base_temperature", 1.0)
                     sum_prompt = build_summarize_prompt(
                         worker_params["image_data_url"],
                         parent_preview,
