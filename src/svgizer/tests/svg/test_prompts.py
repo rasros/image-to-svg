@@ -34,7 +34,7 @@ def test_is_valid_svg_malformed_xml():
     svg = "<svg><rect></svg>"  # Unclosed tag
     valid, err = is_valid_svg(svg)
     assert valid is False
-    assert err is str
+    assert isinstance(err, str)
     assert "XML parse error" in err
 
 
@@ -42,5 +42,5 @@ def test_is_valid_svg_wrong_root_tag():
     xml = "<g><rect/></g>"
     valid, err = is_valid_svg(xml)
     assert valid is False
-    assert err is str
+    assert isinstance(err, str)
     assert "Root tag is not <svg>" in err
