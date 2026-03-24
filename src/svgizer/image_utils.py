@@ -52,6 +52,8 @@ def rasterize_svg_to_png_bytes(svg_text: str, *, out_w: int, out_h: int) -> byte
         output_width=out_w,
         output_height=out_h,
     )
+    if raw_png is None:
+        raise ValueError(f"Failed to rasterize SVG to PNG: {svg_text}")
 
     img = Image.open(io.BytesIO(raw_png)).convert("RGBA")
 
