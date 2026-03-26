@@ -75,6 +75,7 @@ def main():
             patience=args.patience or None,
             min_delta=args.min_delta,
             llm_rate=args.llm_rate,
+            pool_size=args.pool_size,
         )
     except KeyboardInterrupt:
         print("\nSearch interrupted by user. Exiting safely...", file=sys.stderr)

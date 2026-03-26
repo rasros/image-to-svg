@@ -12,6 +12,7 @@ DEFAULT_WRITE_LINEAGE = True
 DEFAULT_IMAGE_LONG_SIDE = 512
 DEFAULT_REASONING = "medium"
 DEFAULT_LLM_RATE = 0.05
+DEFAULT_POOL_SIZE = 20
 
 
 def parse_args():
@@ -123,6 +124,16 @@ def parse_args():
     )
 
     parser.add_argument(
+        "--pool-size",
+        type=int,
+        default=DEFAULT_POOL_SIZE,
+        help=(
+            f"Number of top nodes kept in the active pool for parent selection. "
+            f"Default: {DEFAULT_POOL_SIZE}."
+        ),
+    )
+
+    parser.add_argument(
         "--patience",
         type=int,
         default=0,
@@ -147,8 +158,8 @@ def parse_args():
     if args.max_wall_seconds is not None and args.max_wall_seconds <= 0:
         args.max_wall_seconds = None
 
-    if args.max_accepts <= 0 or args.workers <= 0:
-        raise SystemExit("Error: --max-accepts and --workers must be > 0")
+    if args.max_accepts <= 0 or args.workers <= 0 or args.pool_size <= 0:
+        raise SystemExit("Error: --max-accepts, --workers, and --pool-size must be > 0")
     if args.image_long_side < 0:
         raise SystemExit("Error: Configuration values cannot be negative")
 

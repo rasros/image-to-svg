@@ -46,6 +46,7 @@ def run_svg_search(
     patience: int | None = None,
     min_delta: float = 1e-4,
     llm_rate: float = 0.2,
+    pool_size: int = 20,
 ) -> None:
     setup_logger(log_level)
 
@@ -118,7 +119,9 @@ def run_svg_search(
     if strategy_type == StrategyType.GREEDY:
         base_strategy = GreedyHillClimbingStrategy[SvgStatePayload]()
     else:
-        base_strategy = NsgaStrategy[SvgStatePayload](pool_size=20, crossover_prob=0.25)
+        base_strategy = NsgaStrategy[SvgStatePayload](
+            pool_size=pool_size, crossover_prob=0.25
+        )
 
     strategy = SvgStrategyAdapter(base_strategy, image_long_side, write_lineage)
     engine = MultiprocessSearchEngine(
@@ -145,4 +148,6 @@ def run_svg_search(
     }
 
     engine.start_workers(worker_loop, worker_params)
-    engine.run(initial_nodes, max_accepts, max_wall_seconds, patience, min_delta)
+    engine.run(
+        initial_nodes, max_accepts, max_wall_seconds, patience, min_delta, pool_size
+    )

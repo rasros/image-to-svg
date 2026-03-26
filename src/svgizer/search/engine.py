@@ -48,12 +48,16 @@ class MultiprocessSearchEngine(Generic[TState]):
         max_wall_seconds: float | None,
         patience: int | None = None,
         min_delta: float = 1e-4,
+        active_pool_size: int = 20,
     ) -> None:
         start_time = time.monotonic()
         node_states = {n.id: n.state for n in initial_nodes}
-        accepted_nodes = list(initial_nodes)
 
-        best_node = min(initial_nodes, key=lambda n: n.score) if initial_nodes else None
+        # Fixed-size active pool: best N nodes by score, used for parent selection.
+        sorted_initial = sorted(initial_nodes, key=lambda n: n.score)
+        active_pool: list[SearchNode[TState]] = sorted_initial[:active_pool_size]
+
+        best_node = sorted_initial[0] if sorted_initial else None
         patience_best = best_node.score if best_node else float("inf")
         no_improve_tasks = 0
 
@@ -95,7 +99,7 @@ class MultiprocessSearchEngine(Generic[TState]):
                     progress = (
                         accepted_count / float(max_accepts) if max_accepts > 0 else 0.0
                     )
-                    pid1, pid2 = self.strategy.select_parent(accepted_nodes, progress)
+                    pid1, pid2 = self.strategy.select_parent(active_pool, progress)
 
                     self.task_q.put(
                         Task(
@@ -146,7 +150,13 @@ class MultiprocessSearchEngine(Generic[TState]):
                     content=res.content,
                 )
 
-                accepted_nodes.append(new_node)
+                active_pool.append(new_node)
+                if len(active_pool) > active_pool_size:
+                    # Evict the worst node (highest score) to keep pool bounded.
+                    worst_idx = max(
+                        range(len(active_pool)), key=lambda i: active_pool[i].score
+                    )
+                    active_pool.pop(worst_idx)
                 node_states[new_node.id] = new_state
                 accepted_count += 1
 
