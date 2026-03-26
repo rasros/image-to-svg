@@ -269,21 +269,24 @@ class MultiprocessSearchEngine(Generic[TState]):
 
         finally:
             self._shutdown()
-            with contextlib.suppress(Exception):
-                self.unscored_q.put(None)
 
     def _shutdown(self) -> None:
         log.info("Shutting down workers...")
 
-        with contextlib.suppress(queue.Full):
+        with contextlib.suppress(queue.Full, OSError, ValueError):
             self.unscored_q.put(None, timeout=0.5)
 
         for _ in self.procs:
             try:
                 self.task_q.put(None, timeout=0.5)
-            except queue.Full:
+            except (queue.Full, OSError, ValueError):
                 log.debug("Task queue full during shutdown.")
+
+        self.task_q.cancel_join_thread()
+        self.unscored_q.cancel_join_thread()
+
         for p in self.procs:
             p.join(timeout=1.0)
             if p.is_alive():
                 p.terminate()
+                p.join()
