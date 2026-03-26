@@ -4,6 +4,7 @@ import logging
 import os
 
 from PIL import Image
+from tqdm import tqdm
 
 from svgizer.image_utils import (
     downscale_png_bytes,
@@ -74,25 +75,52 @@ def run_svg_search(
 
     resumed_items = storage.load_resume_nodes(max_nodes=pool_size)
     if resumed_items:
-        log.info(f"Resuming {len(resumed_items)} nodes. Re-scoring...")
+        log.info(
+            f"Resuming {len(resumed_items)} nodes. Deduplicating and re-scoring..."
+        )
+
+        unique_items = []
+        seen_sigs = set()
+        for old_id, svg_text in resumed_items:
+            sig = compute_signature(svg_text)
+            if sig:
+                if sig in seen_sigs:
+                    log.debug(f"Skipping duplicate Node {old_id} during resume.")
+                    continue
+                seen_sigs.add(sig)
+            unique_items.append((old_id, svg_text, sig))
+
+        log.info(f"Filtered to {len(unique_items)} unique nodes.")
 
         # Helper for threaded rasterization
         def _prep_resume_node(item):
-            old_id, svg_text = item
+            old_id, svg_text, sig = item
             png = rasterize_svg_to_png_bytes(
                 svg_text, out_w=original_w, out_h=original_h
             )
             preview = make_preview_data_url(png, image_long_side)
             complexity = svg_complexity(svg_text)
-            sig = compute_signature(svg_text)
             return old_id, svg_text, png, preview, complexity, sig
 
-        # Parallelize the CPU-bound rasterization/prep
+        prepped_nodes = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
-            prepped_nodes = list(executor.map(_prep_resume_node, resumed_items))
+            futures = [
+                executor.submit(_prep_resume_node, item) for item in unique_items
+            ]
+            for future in tqdm(
+                concurrent.futures.as_completed(futures),
+                total=len(futures),
+                desc="Rasterizing resume nodes",
+                unit="node",
+            ):
+                try:
+                    prepped_nodes.append(future.result())
+                except Exception as e:
+                    log.error(f"Failed to prep resume node: {e}")
 
-        # Sequentially score on the main thread (GPU bound)
-        for old_id, svg_text, png, preview, complexity, sig in prepped_nodes:
+        for old_id, svg_text, png, preview, complexity, sig in tqdm(
+            prepped_nodes, desc="Scoring resume nodes", unit="node"
+        ):
             try:
                 new_score = scorer.score(scoring_ref, png)
 

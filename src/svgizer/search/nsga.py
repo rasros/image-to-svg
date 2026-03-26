@@ -181,7 +181,6 @@ class NsgaStrategy(Generic[TState]):
             for i, j in sample_pairs
         ) / len(sample_pairs)
 
-        log.info(f"Mean pool MinHash distance: {mean_distance:.4f}")
         return mean_distance < self.diversity_boost_threshold
 
     def create_new_state(self, result: Result[TState]) -> ChainState[TState]:
