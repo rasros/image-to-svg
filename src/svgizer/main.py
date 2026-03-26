@@ -79,7 +79,7 @@ def main():
             seed_tasks=args.seed_tasks,
             similarity_threshold=args.similarity_threshold,
             min_diversity=args.min_diversity,
-            max_epochs=args.max_epochs or None,
+            max_epochs=None if args.max_epochs < 0 else args.max_epochs + 1,
         )
     except KeyboardInterrupt:
         print("\nSearch interrupted by user. Exiting safely...", file=sys.stderr)

@@ -53,7 +53,8 @@ class DreamSimScorer(Scorer):
                 self._torch = torch
             except ImportError as e:
                 raise ImportError(
-                    "dreamsim or torch not installed. Run 'pip install .[ml]'"
+                    f"dreamsim or torch not installed or failed to load: {e}. "
+                    "Run 'pip install .[ml]' or install a compatible torch build."
                 ) from e
 
     def validate_environment(self):

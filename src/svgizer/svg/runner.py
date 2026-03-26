@@ -14,6 +14,7 @@ from svgizer.image_utils import (
 )
 from svgizer.score import ScorerType, get_scorer
 from svgizer.score.complexity import svg_complexity
+from svgizer.score.simple import SimpleFallbackScorer
 from svgizer.search import (
     INVALID_SCORE,
     ChainState,
@@ -31,6 +32,55 @@ from svgizer.svg.worker import worker_loop
 from svgizer.utils import setup_logger
 
 log = logging.getLogger("main")
+
+
+def _prefilter_nodes(
+    prepped_nodes: list,
+    original_img: Image.Image,
+    max_keep: int,
+) -> list:
+    """Use SimpleFallbackScorer + complexity Pareto front to reduce candidates."""
+    simple_scorer = SimpleFallbackScorer()
+    simple_ref = simple_scorer.prepare_reference(original_img)
+
+    simple_scores = []
+    for _, _, png, _, _, _ in prepped_nodes:
+        try:
+            simple_scores.append(simple_scorer.score(simple_ref, png))
+        except Exception:
+            simple_scores.append(1.0)
+
+    complexities = [item[4] for item in prepped_nodes]
+    max_s = max(simple_scores, default=1.0) or 1.0
+    max_c = max(complexities, default=1.0) or 1.0
+
+    temp_nodes = [
+        SearchNode(
+            score=simple_scores[i],
+            id=i,
+            parent_id=0,
+            state=ChainState(score=simple_scores[i], payload=None),
+            complexity=complexities[i],
+        )
+        for i in range(len(prepped_nodes))
+    ]
+    objectives = {
+        i: (simple_scores[i] / max_s, complexities[i] / max_c)
+        for i in range(len(prepped_nodes))
+    }
+
+    fronts = non_dominated_sort(temp_nodes, objectives)
+    kept: list[int] = []
+    for front in fronts:
+        if len(kept) >= max_keep:
+            break
+        distances = crowding_distance(front, objectives)
+        for node in sorted(front, key=lambda n: -distances[n.id]):
+            if len(kept) >= max_keep:
+                break
+            kept.append(node.id)
+
+    return [prepped_nodes[i] for i in kept]
 
 
 def run_svg_search(
@@ -118,6 +168,14 @@ def run_svg_search(
                     prepped_nodes.append(future.result())
                 except Exception as e:
                     log.error(f"Failed to prep resume node: {e}")
+
+        if len(prepped_nodes) > 2 * pool_size:
+            log.info(
+                f"Pre-filtering {len(prepped_nodes)} resume nodes "
+                f"to {2 * pool_size} using simple scorer + complexity Pareto front..."
+            )
+            prepped_nodes = _prefilter_nodes(prepped_nodes, original_img, 2 * pool_size)
+            log.info(f"Pre-filter done: {len(prepped_nodes)} nodes selected.")
 
         for old_id, svg_text, png, preview, complexity, sig in tqdm(
             prepped_nodes, desc="Scoring resume nodes", unit="node"
