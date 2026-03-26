@@ -1,16 +1,11 @@
-import sys
-
 import pytest
 
-from svgizer.cli import parse_args
+from svgizer.cli import DEFAULT_LLM_RATE, DEFAULT_POOL_SIZE, parse_args
 from svgizer.search import StrategyType
 
 
-def test_parse_args(monkeypatch):
-    monkeypatch.setattr(
-        sys, "argv", ["svgizer", "input.png", "--workers", "4", "--max-accepts", "10"]
-    )
-    args = parse_args()
+def test_parse_args_basic():
+    args = parse_args(["input.png", "--workers", "4", "--max-accepts", "10"])
     assert args.image == "input.png"
     assert args.workers == 4
     assert args.max_accepts == 10
@@ -22,25 +17,18 @@ def test_parse_args(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_max_wall_seconds_zero_becomes_none(monkeypatch):
-    monkeypatch.setattr(sys, "argv", ["svgizer", "img.png", "--max-wall-seconds", "0"])
-    args = parse_args()
+def test_max_wall_seconds_zero_becomes_none():
+    args = parse_args(["img.png", "--max-wall-seconds", "0"])
     assert args.max_wall_seconds is None
 
 
-def test_max_wall_seconds_negative_becomes_none(monkeypatch):
-    monkeypatch.setattr(
-        sys, "argv", ["svgizer", "img.png", "--max-wall-seconds", "-10"]
-    )
-    args = parse_args()
+def test_max_wall_seconds_negative_becomes_none():
+    args = parse_args(["img.png", "--max-wall-seconds", "-10"])
     assert args.max_wall_seconds is None
 
 
-def test_max_wall_seconds_positive_kept(monkeypatch):
-    monkeypatch.setattr(
-        sys, "argv", ["svgizer", "img.png", "--max-wall-seconds", "120"]
-    )
-    args = parse_args()
+def test_max_wall_seconds_positive_kept():
+    args = parse_args(["img.png", "--max-wall-seconds", "120"])
     assert args.max_wall_seconds == 120.0
 
 
@@ -49,28 +37,24 @@ def test_max_wall_seconds_positive_kept(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_max_accepts_zero_raises(monkeypatch):
-    monkeypatch.setattr(sys, "argv", ["svgizer", "img.png", "--max-accepts", "0"])
+def test_max_accepts_zero_raises():
     with pytest.raises(SystemExit):
-        parse_args()
+        parse_args(["img.png", "--max-accepts", "0"])
 
 
-def test_workers_zero_raises(monkeypatch):
-    monkeypatch.setattr(sys, "argv", ["svgizer", "img.png", "--workers", "0"])
+def test_workers_zero_raises():
     with pytest.raises(SystemExit):
-        parse_args()
+        parse_args(["img.png", "--workers", "0"])
 
 
-def test_pool_size_zero_raises(monkeypatch):
-    monkeypatch.setattr(sys, "argv", ["svgizer", "img.png", "--pool-size", "0"])
+def test_pool_size_zero_raises():
     with pytest.raises(SystemExit):
-        parse_args()
+        parse_args(["img.png", "--pool-size", "0"])
 
 
-def test_image_long_side_negative_raises(monkeypatch):
-    monkeypatch.setattr(sys, "argv", ["svgizer", "img.png", "--image-long-side", "-1"])
+def test_image_long_side_negative_raises():
     with pytest.raises(SystemExit):
-        parse_args()
+        parse_args(["img.png", "--image-long-side", "-1"])
 
 
 # ---------------------------------------------------------------------------
@@ -78,21 +62,16 @@ def test_image_long_side_negative_raises(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_default_pool_size(monkeypatch):
-    from svgizer.cli import DEFAULT_POOL_SIZE
-
-    monkeypatch.setattr(sys, "argv", ["svgizer", "img.png"])
-    args = parse_args()
+def test_default_pool_size():
+    args = parse_args(["img.png"])
     assert args.pool_size == DEFAULT_POOL_SIZE
 
 
-def test_default_llm_rate(monkeypatch):
-    monkeypatch.setattr(sys, "argv", ["svgizer", "img.png"])
-    args = parse_args()
-    assert args.llm_rate == 0.05
+def test_default_llm_rate():
+    args = parse_args(["img.png"])
+    assert args.llm_rate == DEFAULT_LLM_RATE
 
 
-def test_default_patience_zero(monkeypatch):
-    monkeypatch.setattr(sys, "argv", ["svgizer", "img.png"])
-    args = parse_args()
+def test_default_patience_zero():
+    args = parse_args(["img.png"])
     assert args.patience == 0

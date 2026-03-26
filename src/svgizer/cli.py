@@ -15,7 +15,7 @@ DEFAULT_LLM_RATE = 1 / DEFAULT_WORKERS
 DEFAULT_POOL_SIZE = 200
 
 
-def parse_args():
+def parse_args(args: list[str] | None = None):
     parser = argparse.ArgumentParser(
         description=(
             "SVGizer: Evolutionary SVG approximation using Vision LLMs "
@@ -153,7 +153,7 @@ def parse_args():
         "--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"]
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(args)
 
     if args.max_wall_seconds is not None and args.max_wall_seconds <= 0:
         args.max_wall_seconds = None

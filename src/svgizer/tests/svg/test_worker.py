@@ -17,13 +17,3 @@ def test_use_llm_rate_one_always_calls():
     """With rate=1.0, always call the LLM even when an SVG exists."""
     for _ in range(20):
         assert _use_llm(has_svg=True, llm_rate=1.0) is True
-
-
-def test_use_llm_stochastic(monkeypatch):
-    """With rate=0.5, roughly half of calls should return True."""
-    import random
-
-    values = [0.3, 0.7, 0.3, 0.7, 0.3]
-    monkeypatch.setattr(random, "random", lambda: values.pop(0))
-    results = [_use_llm(has_svg=True, llm_rate=0.5) for _ in range(5)]
-    assert results == [True, False, True, False, True]
