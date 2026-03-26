@@ -31,7 +31,6 @@ from svgizer.utils import setup_logger
 
 
 def _use_llm(has_svg: bool, llm_rate: float) -> bool:
-    """Return True if this task should call the LLM."""
     return not has_svg or random.random() < llm_rate
 
 
@@ -48,7 +47,6 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
 
         client = get_provider(provider_name, api_key)
 
-        # Setup fast local reference for CPU micro-search
         orig_img = Image.open(io.BytesIO(worker_params["original_png_bytes"])).convert(
             "RGB"
         )
@@ -79,8 +77,6 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
                 )
 
             elif use_llm:
-                # force_diverse: generate from scratch to seed a new lineage.
-                # Normal LLM: summarise parent then refine.
                 if task.force_diverse:
                     change_summary = "Diversity seed: fresh generation"
                     gen_config = LLMConfig(model=model_name, reasoning=reasoning)
@@ -167,7 +163,6 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
             complexity = svg_complexity(svg)
             signature = compute_signature(svg)
 
-            # Preview computed in worker to free the main thread
             full_img = Image.open(io.BytesIO(png)).convert("RGB")
             preview_img = resize_long_side(full_img, worker_params["image_long_side"])
             preview_buf = io.BytesIO()
@@ -180,7 +175,7 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
                     parent_id=task.parent_id,
                     worker_slot=task.worker_slot,
                     valid=True,
-                    score=None,  # scored by main process via score_fn
+                    score=None,
                     payload=SvgResultPayload(
                         svg=svg,
                         raster_png=png,

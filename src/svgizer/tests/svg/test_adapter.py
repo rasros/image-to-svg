@@ -53,22 +53,12 @@ def create_payload(svg_text: str | None) -> SvgStatePayload:
     )
 
 
-def create_result(svg_text: str | None) -> SvgResultPayload:
-    return SvgResultPayload(svg=svg_text, raster_png=None, change_summary=None)
-
-
 def test_payload_creation():
     payload = create_payload("<svg></svg>")
     assert payload.svg == "<svg></svg>"
 
 
-# ---------------------------------------------------------------------------
-# create_new_state: preview URL handling
-# ---------------------------------------------------------------------------
-
-
 def test_create_new_state_uses_precomputed_preview():
-    """Pre-computed preview from worker is passed through unchanged."""
     adapter = _make_adapter()
     precomputed = "data:image/png;base64,PRECOMPUTED"
     result = _make_result(preview_data_url=precomputed)
@@ -77,7 +67,6 @@ def test_create_new_state_uses_precomputed_preview():
 
 
 def test_create_new_state_falls_back_to_computing_preview():
-    """When preview is None, falls back to computing from raster_png."""
     adapter = _make_adapter()
     png = _make_png()
     result = _make_result(raster_png=png, preview_data_url=None)
@@ -87,7 +76,6 @@ def test_create_new_state_falls_back_to_computing_preview():
 
 
 def test_create_new_state_no_png_no_preview():
-    """No raster_png and no pre-computed preview → preview is None."""
     adapter = _make_adapter()
     result = _make_result(raster_png=None, preview_data_url=None)
     state = adapter.create_new_state(result)
@@ -95,7 +83,6 @@ def test_create_new_state_no_png_no_preview():
 
 
 def test_create_new_state_precomputed_takes_priority_over_raster_png():
-    """Pre-computed URL wins even when raster_png is also present."""
     adapter = _make_adapter()
     precomputed = "data:image/png;base64,WINNER"
     result = _make_result(raster_png=_make_png(), preview_data_url=precomputed)
@@ -103,13 +90,7 @@ def test_create_new_state_precomputed_takes_priority_over_raster_png():
     assert state.payload.raster_preview_data_url == precomputed
 
 
-# ---------------------------------------------------------------------------
-# create_new_state: write_lineage handling
-# ---------------------------------------------------------------------------
-
-
 def test_create_new_state_write_lineage_sets_raster_data_url():
-    """write_lineage=True + raster_png → raster_data_url is populated."""
     adapter = _make_adapter(write_lineage=True)
     result = _make_result(raster_png=_make_png())
     state = adapter.create_new_state(result)
@@ -118,7 +99,6 @@ def test_create_new_state_write_lineage_sets_raster_data_url():
 
 
 def test_create_new_state_no_lineage_raster_data_url_is_none():
-    """write_lineage=False → raster_data_url is None regardless of raster_png."""
     adapter = _make_adapter(write_lineage=False)
     result = _make_result(raster_png=_make_png())
     state = adapter.create_new_state(result)

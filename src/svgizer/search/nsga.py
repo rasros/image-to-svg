@@ -1,20 +1,3 @@
-"""
-NSGA-II-inspired multi-objective search strategy.
-
-Objectives:
-  1. Visual quality  (node.score, lower is better)
-  2. SVG complexity  (node.complexity, lower is better)
-
-Both objectives are normalised to [0, 1] within the active population before
-Pareto sorting, so they contribute equally to dominance.
-
-Selection uses binary tournament on
-(Pareto front rank ASC, crowding distance DESC).
-
-Diversity: when building the selection pool, near-duplicate nodes (normalised
-edit distance >= diversity_threshold) are skipped to prevent crossover waste.
-"""
-
 import logging
 import random
 from typing import Generic, TypeVar
@@ -26,7 +9,6 @@ log = logging.getLogger(__name__)
 
 TState = TypeVar("TState")
 
-# Objectives tuple: (visual_score, complexity)
 Objectives = tuple[float, float]
 
 
@@ -74,7 +56,7 @@ def crowding_distance(
     front: list[SearchNode],
     objectives: dict[int, Objectives],
 ) -> dict[int, float]:
-    """Compute crowding distance for each node in a front."""
+    """Compute crowding distance to maintain diversity within a front."""
     if len(front) <= 2:
         return {n.id: float("inf") for n in front}
 
@@ -103,22 +85,7 @@ def crowding_distance(
 
 
 class NsgaStrategy(Generic[TState]):
-    """
-    NSGA-II-style parent selection over visual quality and SVG complexity.
-
-    Complexity is read directly from node.complexity (set by the worker via Result).
-    Both objectives are normalised within the active population so neither dominates.
-
-    Args:
-        pool_size:                  Max nodes in the selection pool, ordered by Pareto
-                                    rank then crowding distance.
-        crossover_prob:             Probability of selecting two parents instead of one.
-        diversity_threshold:        MinHash Jaccard similarity above which two nodes are
-                                    considered near-duplicates. The lower-quality
-                                    duplicate is dropped from the pool.
-                                    Set to 1.0 to disable.
-        diversity_boost_threshold:  Mean distance below which to recommend LLM seeding.
-    """
+    """NSGA-II-style selection balancing visual quality and SVG complexity."""
 
     def __init__(
         self,
@@ -137,7 +104,6 @@ class NsgaStrategy(Generic[TState]):
         return self.pool_size
 
     def _too_similar(self, node: SearchNode[TState], other: SearchNode[TState]) -> bool:
-        """True if node and other have nearly identical content based on MinHash."""
         if not node.signature or not other.signature:
             return False
 
@@ -149,12 +115,10 @@ class NsgaStrategy(Generic[TState]):
     ) -> tuple[int, int | None]:
         _ = progress
 
-        # Exclude sentinel / invalid nodes (score=inf means no SVG yet)
         valid = [n for n in nodes if n.score < float("inf")]
         if not valid:
             return nodes[0].id if nodes else 0, None
 
-        # Normalise both objectives to [0, 1] within the current population
         max_score = max(n.score for n in valid) or 1.0
         max_complexity = max(n.complexity for n in valid) or 1.0
 
@@ -162,7 +126,6 @@ class NsgaStrategy(Generic[TState]):
             n.id: (n.score / max_score, n.complexity / max_complexity) for n in valid
         }
 
-        # Non-dominated sort → per-node rank and crowding distance
         fronts = non_dominated_sort(valid, objectives)
         rank: dict[int, int] = {}
         crowd: dict[int, float] = {}
@@ -172,8 +135,6 @@ class NsgaStrategy(Generic[TState]):
                 rank[node.id] = front_idx
                 crowd[node.id] = distances[node.id]
 
-        # Build pool: iterate in quality order; skip near-duplicates of admitted nodes
-        # (the admitted node is always better-ranked, so the duplicate is always worse)
         sorted_valid = sorted(valid, key=lambda n: (rank[n.id], -crowd[n.id]))
         pool: list[SearchNode[TState]] = []
         for node in sorted_valid:
@@ -204,14 +165,12 @@ class NsgaStrategy(Generic[TState]):
         return p1.id, None
 
     def should_diversify(self, pool: list[SearchNode[TState]]) -> bool:
-        """True when pool NCD is low enough to warrant fresh LLM seeds."""
         candidates = [n for n in pool if n.signature and n.score < float("inf")]
         if len(candidates) < 4:
             return False
         n = len(candidates)
         all_pairs = [(i, j) for i in range(n) for j in range(i + 1, n)]
 
-        # Exhaustive check for small/resumed pools, sample for large ones
         if len(all_pairs) <= 28:
             sample_pairs = all_pairs
         else:
@@ -222,8 +181,7 @@ class NsgaStrategy(Generic[TState]):
             for i, j in sample_pairs
         ) / len(sample_pairs)
 
-        log.info(f"Evaluated pool diversity (mean MinHash dist): {mean_distance:.4f}")
-
+        log.info(f"Mean pool MinHash distance: {mean_distance:.4f}")
         return mean_distance < self.diversity_boost_threshold
 
     def create_new_state(self, result: Result[TState]) -> ChainState[TState]:

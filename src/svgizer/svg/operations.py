@@ -12,7 +12,6 @@ from svgizer.score.utils import lab_l1
 
 SVG_NS = "http://www.w3.org/2000/svg"
 
-# Attributes whose numeric values are worth tweaking
 _NUMERIC_ATTRS = frozenset(
     {
         "width",
@@ -36,7 +35,6 @@ _NUMERIC_ATTRS = frozenset(
     }
 )
 
-# Matches a bare number optionally followed by a CSS unit or %
 _NUM_RE = re.compile(r"^(-?\d+(?:\.\d+)?)([a-z%]*)$")
 
 
@@ -53,10 +51,6 @@ def with_retries(
     fallback: str,
     max_retries: int = 3,
 ) -> str:
-    """
-    Call op() up to max_retries times, returning the first result that is a
-    valid SVG document. Returns fallback if every attempt fails or raises.
-    """
     for _ in range(max_retries):
         try:
             result = op()
@@ -74,17 +68,11 @@ def with_micro_search(
     num_trials: int = 15,
     default_summary: str = "No improvement",
 ) -> tuple[str, str]:
-    """
-    Executes op_generator() multiple times and evaluates each valid SVG result
-    using a fast low-resolution LAB L1 pixel difference against orig_img_fast.
-    Returns the (svg, summary) that achieved the best visual score.
-    """
     best_svg = fallback_svg
     best_fast_score = float("inf")
     best_summary = default_summary
     fast_w, fast_h = orig_img_fast.size
 
-    # 1. Evaluate fallback's baseline fast score
     try:
         parent_png = rasterize_svg_to_png_bytes(
             fallback_svg, out_w=fast_w, out_h=fast_h
@@ -94,7 +82,6 @@ def with_micro_search(
     except Exception:
         pass
 
-    # 2. Try N rapid mutations/crossovers
     for _ in range(num_trials):
         cand_svg, summary = op_generator()
         if cand_svg == fallback_svg:
@@ -157,7 +144,6 @@ def crossover(svg_a: str, svg_b: str, k: int = 2) -> str:
 
 
 def mutate_remove_node(svg: str) -> str:
-    """Remove a randomly chosen element from anywhere in the SVG tree."""
     try:
         root = ET.fromstring(svg)
 
@@ -179,7 +165,6 @@ def mutate_remove_node(svg: str) -> str:
 
 
 def mutate_drop_style_property(svg: str) -> str:
-    """Remove one random CSS property from a style attribute."""
     try:
         root = ET.fromstring(svg)
 
@@ -202,14 +187,13 @@ def mutate_drop_style_property(svg: str) -> str:
 
 
 def mutate_numeric(svg: str) -> str:
-    """Tweak a random numeric attribute value by a random +-10-30% factor."""
     try:
         root = ET.fromstring(svg)
 
         candidates: list[tuple[ET.Element, str, float, str]] = []
         for elem in root.iter():
             for attr, val in elem.attrib.items():
-                bare_attr = attr.split("}")[-1]  # strip namespace prefix
+                bare_attr = attr.split("}")[-1]
                 if bare_attr not in _NUMERIC_ATTRS:
                     continue
                 m = _NUM_RE.match(val.strip())
@@ -244,7 +228,6 @@ def crossover_with_micro_search(
     orig_img_fast: Image.Image,
     num_trials: int = 15,
 ) -> tuple[str, str]:
-    """Applies crossover repeatedly and keeps the best structural result."""
 
     def _op():
         cand = with_retries(lambda: crossover(svg_a, svg_b), fallback=svg_a)
@@ -264,7 +247,6 @@ def mutate_with_micro_search(
     orig_img_fast: Image.Image,
     num_trials: int = 15,
 ) -> tuple[str, str]:
-    """Applies random mutations repeatedly and keeps the best structural result."""
 
     def _op():
         roll = random.random()

@@ -28,5 +28,5 @@ def lab_l1(a_rgb: Image.Image, b_rgb: Image.Image) -> float:
         raise RuntimeError("ImageCms.applyTransform returned None")
     diff = ImageChops.difference(a_lab, b_lab)
     stat = ImageStat.Stat(diff)
-    mean_abs = float(sum(stat.mean) / 3.0)  # [0..255]
+    mean_abs = float(sum(stat.mean) / 3.0)
     return mean_abs / 255.0

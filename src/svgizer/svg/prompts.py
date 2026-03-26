@@ -137,7 +137,6 @@ def build_crossover_prompt(
 
 
 def extract_svg_fragment(raw: str) -> str:
-    # Use rfind to avoid matching <svg> tags discussed inside the <plan> block
     lower = raw.lower()
     end_idx = lower.rfind("</svg>")
     if end_idx != -1:
@@ -145,7 +144,6 @@ def extract_svg_fragment(raw: str) -> str:
         if start_idx != -1:
             return raw[start_idx : end_idx + 6].strip()
 
-    # Fallback
     start_idx = lower.find("<svg")
     if start_idx != -1 and end_idx != -1:
         return raw[start_idx : end_idx + 6].strip()

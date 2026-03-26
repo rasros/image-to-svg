@@ -56,11 +56,6 @@ def test_is_valid_svg_wrong_root_tag():
     assert "Root tag is not <svg>" in err
 
 
-# ---------------------------------------------------------------------------
-# build_svg_gen_prompt
-# ---------------------------------------------------------------------------
-
-
 def _text_blocks(blocks: list[dict]) -> list[str]:
     return [b["text"] for b in blocks if b["type"] == "input_text"]
 
@@ -138,11 +133,6 @@ def test_gen_prompt_diff_url_added_when_provided():
 def test_gen_prompt_diff_url_absent_when_not_provided():
     blocks = build_svg_gen_prompt(_IMG_URL, iter_index=1)
     assert _DIFF_URL not in _image_blocks(blocks)
-
-
-# ---------------------------------------------------------------------------
-# build_summarize_prompt
-# ---------------------------------------------------------------------------
 
 
 def test_summarize_prompt_basic_structure():

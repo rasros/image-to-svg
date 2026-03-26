@@ -82,7 +82,6 @@ def generate_diff_data_url(ref_bytes: bytes, cand_bytes: bytes, long_side: int) 
 
     diff = ImageChops.difference(ref_img, cand_img)
 
-    # Explicitly typed to satisfy strict type checkers like Pyre/Pyright
     def _boost_brightness(p: int) -> int:
         return min(255, p * 3)
 

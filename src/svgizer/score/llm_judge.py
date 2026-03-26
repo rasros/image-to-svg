@@ -15,7 +15,6 @@ from svgizer.score.utils import lab_l1
 log = logging.getLogger(__name__)
 TIE_BREAKER_WEIGHT = 0.01
 
-# Non-reasoning, temperature=0 models per provider for judge use
 JUDGE_MODELS: dict[str, str] = {
     "openai": "gpt-5.4",
     "anthropic": "claude-sonnet-4-6",

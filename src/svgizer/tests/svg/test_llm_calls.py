@@ -26,7 +26,6 @@ def _make_image_data_url(color: str = "blue", size: int = 32) -> str:
 
 @pytest.mark.llm
 def test_llm_svg_generation_produces_valid_svg():
-    """LLM + gen prompt → extract_svg_fragment → is_valid_svg."""
     client = get_provider("openai")
     image_data_url = _make_image_data_url("blue")
     prompt = build_svg_gen_prompt(image_data_url, iter_index=1)
@@ -39,7 +38,6 @@ def test_llm_svg_generation_produces_valid_svg():
 
 @pytest.mark.llm
 def test_llm_svg_refinement_produces_valid_svg():
-    """LLM + refinement prompt (existing SVG) → extract_svg_fragment → is_valid_svg."""
     client = get_provider("openai")
     image_data_url = _make_image_data_url("red")
     ns = "http://www.w3.org/2000/svg"
@@ -59,7 +57,6 @@ def test_llm_svg_refinement_produces_valid_svg():
 
 @pytest.mark.llm
 def test_llm_summarize_prompt_returns_nonempty_text():
-    """LLM + summarize prompt → non-empty string."""
     client = get_provider("openai")
     image_data_url = _make_image_data_url("green")
     parent_svg_data_url = _make_image_data_url("blue")

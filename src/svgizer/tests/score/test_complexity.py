@@ -42,7 +42,6 @@ def test_repetitive_svg_compresses_better_than_diverse():
         )
         + "</svg>"
     )
-    # Both have 30 elements; diverse one carries more unique information
     assert svg_complexity(repetitive) < svg_complexity(diverse)
 
 

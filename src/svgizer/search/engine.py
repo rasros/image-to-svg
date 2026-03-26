@@ -11,7 +11,7 @@ from svgizer.search.models import Result, SearchNode, Task
 TState = TypeVar("TState")
 log = logging.getLogger(__name__)
 
-_DIVERSE_INTERVAL = 5  # max one diversity seed per N tasks dispatched
+_DIVERSE_INTERVAL = 5
 
 
 class MultiprocessSearchEngine(Generic[TState]):
@@ -58,7 +58,6 @@ class MultiprocessSearchEngine(Generic[TState]):
         start_time = time.monotonic()
         node_states = {n.id: n.state for n in initial_nodes}
 
-        # Fixed-size active pool: best N nodes by score, used for parent selection.
         sorted_initial = sorted(initial_nodes, key=lambda n: n.score)
         active_pool: list[SearchNode[TState]] = sorted_initial[:active_pool_size]
 
@@ -71,9 +70,7 @@ class MultiprocessSearchEngine(Generic[TState]):
         accepted_count = 0
         in_flight = 0
 
-        tasks_since_diverse = (
-            _DIVERSE_INTERVAL  # Start at threshold to evaluate immediately
-        )
+        tasks_since_diverse = _DIVERSE_INTERVAL
 
         next_node_id = max(
             self.storage.max_node_id, max((n.id for n in initial_nodes), default=0)
@@ -118,10 +115,7 @@ class MultiprocessSearchEngine(Generic[TState]):
                     elif not is_warmup and tasks_since_diverse >= _DIVERSE_INTERVAL:
                         force_diverse = self.strategy.should_diversify(active_pool)
                         if force_diverse:
-                            log.warning(
-                                "Pool diversity critically low. "
-                                "Dispatching fresh LLM seed."
-                            )
+                            log.warning("Pool diversity low. Dispatching fresh seed.")
 
                     tasks_since_diverse = (
                         0 if force_diverse else tasks_since_diverse + 1
@@ -147,8 +141,7 @@ class MultiprocessSearchEngine(Generic[TState]):
                 except queue.Empty:
                     if not any(p.is_alive() for p in self.procs):
                         raise RuntimeError(
-                            "All worker processes have exited. Check logs for "
-                            "initialization errors (missing API keys, etc)."
+                            "All worker processes have exited."
                         ) from None
                     continue
 
@@ -189,7 +182,6 @@ class MultiprocessSearchEngine(Generic[TState]):
 
                 active_pool.append(new_node)
                 if len(active_pool) > active_pool_size:
-                    # Evict the worst node (highest score) to keep pool bounded.
                     worst_idx = max(
                         range(len(active_pool)), key=lambda i: active_pool[i].score
                     )

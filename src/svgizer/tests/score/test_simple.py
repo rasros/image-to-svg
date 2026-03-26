@@ -7,7 +7,6 @@ from svgizer.score.simple import SimpleFallbackScorer
 
 def test_simple_fallback_scorer_identical():
     scorer = SimpleFallbackScorer(target_long_side=64)
-
     img_red = Image.new("RGB", (100, 100), color="red")
 
     ref = scorer.prepare_reference(img_red)
@@ -16,13 +15,11 @@ def test_simple_fallback_scorer_identical():
     cand_red_bytes = buf_red.getvalue()
 
     score_identical = scorer.score(ref, cand_red_bytes)
-
     assert score_identical == 0.0
 
 
 def test_simple_fallback_scorer_different():
     scorer = SimpleFallbackScorer(target_long_side=64)
-
     img_red = Image.new("RGB", (100, 100), color="red")
     ref = scorer.prepare_reference(img_red)
 
@@ -32,14 +29,12 @@ def test_simple_fallback_scorer_different():
     cand_blue_bytes = buf_blue.getvalue()
 
     score_diff = scorer.score(ref, cand_blue_bytes)
-
     assert score_diff > 0.0
     assert score_diff <= 1.0
 
 
 def test_simple_fallback_scorer_handles_size_mismatch():
     scorer = SimpleFallbackScorer(target_long_side=64)
-
     img_ref = Image.new("RGB", (200, 200), color="green")
     ref = scorer.prepare_reference(img_ref)
 
@@ -49,7 +44,6 @@ def test_simple_fallback_scorer_handles_size_mismatch():
     cand_bytes = buf_cand.getvalue()
 
     score = scorer.score(ref, cand_bytes)
-
     assert score == 0.0
 
 
@@ -59,7 +53,6 @@ def test_simple_fallback_scorer_invalid_data_returns_max_diff():
     ref = scorer.prepare_reference(img_red)
 
     score = scorer.score(ref, b"not a png")
-
     assert score == 1.0
 
 

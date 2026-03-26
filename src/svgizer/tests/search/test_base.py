@@ -1,9 +1,5 @@
 from svgizer.search.base import compute_signature, estimate_jaccard
 
-# ---------------------------------------------------------------------------
-# compute_signature
-# ---------------------------------------------------------------------------
-
 
 def test_compute_signature_none_returns_none():
     assert compute_signature(None) is None
@@ -16,7 +12,7 @@ def test_compute_signature_empty_string_returns_none():
 def test_compute_signature_returns_tuple():
     sig = compute_signature("hello world")
     assert isinstance(sig, tuple)
-    assert len(sig) == 64  # default num_perms
+    assert len(sig) == 64
 
 
 def test_compute_signature_is_deterministic():
@@ -25,7 +21,6 @@ def test_compute_signature_is_deterministic():
 
 
 def test_compute_signature_short_text_below_ngram_size():
-    # Text shorter than ngram_size=4 still produces a valid signature
     sig = compute_signature("ab", ngram_size=4)
     assert isinstance(sig, tuple)
     assert len(sig) == 64
@@ -35,11 +30,6 @@ def test_compute_signature_different_texts_differ():
     sig_a = compute_signature("<svg><rect/></svg>")
     sig_b = compute_signature("<svg><circle/></svg>")
     assert sig_a != sig_b
-
-
-# ---------------------------------------------------------------------------
-# estimate_jaccard
-# ---------------------------------------------------------------------------
 
 
 def test_estimate_jaccard_both_none_returns_zero():

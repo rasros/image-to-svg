@@ -55,7 +55,6 @@ def run_svg_search(
 ) -> None:
     setup_logger(log_level)
 
-    # 1. Image & Scorer Setup
     original_img = Image.open(image_path).convert("RGB")
     original_w, original_h = original_img.size
 
@@ -72,7 +71,6 @@ def run_svg_search(
     initial_nodes = []
     current_new_id = 1
 
-    # 3. Resume Phase
     resumed_items = storage.load_resume_nodes(max_nodes=pool_size)
     if resumed_items:
         log.info(f"Resuming {len(resumed_items)} nodes. Re-scoring...")
@@ -108,7 +106,6 @@ def run_svg_search(
             except Exception as e:
                 log.error(f"Failed to import Node {old_id}: {e}")
 
-    # 5. Empty Start Fallback
     if not initial_nodes:
         initial_nodes.append(
             SearchNode(
@@ -122,7 +119,6 @@ def run_svg_search(
             )
         )
 
-    # 6. Search Execution Setup
     if strategy_type == StrategyType.GREEDY:
         base_strategy = GreedyHillClimbingStrategy[SvgStatePayload]()
     else:
@@ -133,13 +129,10 @@ def run_svg_search(
             diversity_boost_threshold=diversity_boost_threshold,
         )
 
-    # Warmup: force LLM for the first N tasks so the pool is seeded with
-    # LLM-generated SVGs before local mutations dominate.
     warmup_target = pool_size // 10 if warmup_llm < 0 else warmup_llm
     seeded = sum(1 for n in initial_nodes if n.state.payload.svg)
     warmup_tasks = max(0, warmup_target - seeded)
 
-    # Resume Shock: Check if the loaded pool is completely homogenous
     warmup_diverse = 0
     if seeded > 0 and base_strategy.should_diversify(initial_nodes):
         log.warning("Initial pool lacks diversity. Triggering resume shock.")

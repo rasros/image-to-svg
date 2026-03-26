@@ -69,7 +69,6 @@ def test_rasterize_svg_to_png_bytes_valid():
         """
     )
     png_bytes = rasterize_svg_to_png_bytes(svg, out_w=100, out_h=100)
-
     img = Image.open(io.BytesIO(png_bytes))
     assert img.size == (100, 100)
     assert img.mode == "RGB"
@@ -79,11 +78,6 @@ def test_rasterize_svg_to_png_bytes_invalid_dimensions():
     svg = "<svg></svg>"
     with pytest.raises(ValueError, match="Invalid raster target size"):
         rasterize_svg_to_png_bytes(svg, out_w=-10, out_h=100)
-
-
-# ---------------------------------------------------------------------------
-# generate_diff_data_url
-# ---------------------------------------------------------------------------
 
 
 def test_diff_data_url_returns_data_url():
@@ -112,7 +106,6 @@ def test_diff_data_url_output_respects_long_side():
 
 
 def test_diff_data_url_identical_images_are_black():
-    """Identical images produce a zero-difference map (all black)."""
     ref = create_test_image(64, 64, color="red")
     result = generate_diff_data_url(ref, ref, long_side=64)
     _, b64 = result.split(",", 1)
@@ -121,7 +114,6 @@ def test_diff_data_url_identical_images_are_black():
 
 
 def test_diff_data_url_different_images_are_nonzero():
-    """Different images produce a non-zero diff map."""
     ref = create_test_image(64, 64, color="red")
     cand = create_test_image(64, 64, color="blue")
     result = generate_diff_data_url(ref, cand, long_side=64)
@@ -131,7 +123,6 @@ def test_diff_data_url_different_images_are_nonzero():
 
 
 def test_diff_data_url_handles_size_mismatch():
-    """Candidate with different size is resized before diffing — no crash."""
     ref = create_test_image(64, 64, color="red")
     cand = create_test_image(128, 128, color="blue")
     result = generate_diff_data_url(ref, cand, long_side=64)

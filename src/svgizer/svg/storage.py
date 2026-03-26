@@ -47,14 +47,9 @@ class FileStorageAdapter:
         log.info(f"Storage initialized at: {self.current_run_dir}")
 
     def load_resume_nodes(self, max_nodes: int = 20) -> list[tuple[int, str]]:
-        """
-        Only if resume is true, check the latest past run directory
-        and ingest the top max_nodes SVGs found in its 'nodes' folder.
-        """
         if not self.resume or not self.runs_dir.exists():
             return []
 
-        # Get all past runs, sorted by timestamp name
         past_runs = sorted(
             [
                 d
@@ -92,7 +87,6 @@ class FileStorageAdapter:
             self._max_id = max(self._max_id, node_id)
             parsed_files.append((score, node_id, file_path))
 
-        # Sort by score ascending (lower is better) and take top N
         parsed_files.sort(key=lambda x: x[0])
         top_k_files = parsed_files[:max_nodes]
 
@@ -112,10 +106,6 @@ class FileStorageAdapter:
         return sorted(resumed_data, key=lambda x: x[0])
 
     def save_node(self, node: SearchNode[SvgStatePayload]) -> None:
-        """
-        Writes the node's SVG and PNG to the current run's nodes directory.
-        This is called during re-scoring (resume) and during active search.
-        """
         if self.nodes_dir is None or self.lineage_csv is None:
             return
 
@@ -123,12 +113,10 @@ class FileStorageAdapter:
 
         base_fn = f"{node.score:.6f}_{node.id}"
 
-        # 1. Save SVG
         if node.state.payload.svg:
             svg_path = self.nodes_dir / f"{base_fn}.svg"
             svg_path.write_text(node.state.payload.svg, encoding="utf-8")
 
-        # 2. Update Lineage CSV
         svg_md5 = (
             hashlib.md5(node.state.payload.svg.encode()).hexdigest()
             if node.state.payload.svg

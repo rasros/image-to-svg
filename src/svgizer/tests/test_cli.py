@@ -18,11 +18,6 @@ def test_parse_args_basic():
     assert args.strategy == StrategyType.NSGA.value
 
 
-# ---------------------------------------------------------------------------
-# max_wall_seconds conversion
-# ---------------------------------------------------------------------------
-
-
 def test_max_wall_seconds_zero_becomes_none():
     args = parse_args(["img.png", "--max-wall-seconds", "0"])
     assert args.max_wall_seconds is None
@@ -36,11 +31,6 @@ def test_max_wall_seconds_negative_becomes_none():
 def test_max_wall_seconds_positive_kept():
     args = parse_args(["img.png", "--max-wall-seconds", "120"])
     assert args.max_wall_seconds == 120.0
-
-
-# ---------------------------------------------------------------------------
-# Boundary validation errors
-# ---------------------------------------------------------------------------
 
 
 def test_max_accepts_zero_raises():
@@ -61,11 +51,6 @@ def test_pool_size_zero_raises():
 def test_image_long_side_negative_raises():
     with pytest.raises(SystemExit):
         parse_args(["img.png", "--image-long-side", "-1"])
-
-
-# ---------------------------------------------------------------------------
-# Defaults
-# ---------------------------------------------------------------------------
 
 
 def test_default_pool_size():

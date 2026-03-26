@@ -13,6 +13,6 @@ class LLMConfig:
 
 
 class LLMProvider(Protocol):
-    def generate(self, content_blocks: list[dict[str, Any]], config: LLMConfig) -> str:
-        """Translates internal content blocks to provider-specific SDK calls."""
-        ...
+    def generate(
+        self, content_blocks: list[dict[str, Any]], config: LLMConfig
+    ) -> str: ...

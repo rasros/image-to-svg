@@ -5,15 +5,9 @@ from PIL import Image
 
 
 class Scorer(Protocol):
-    """Protocol for algorithms that score image differences."""
+    def prepare_reference(self, original_rgb: Image.Image) -> Any: ...
 
-    def prepare_reference(self, original_rgb: Image.Image) -> Any:
-        """Pre-processes the reference image into the format required by the scorer."""
-        ...
-
-    def score(self, reference: Any, candidate_png: bytes) -> float:
-        """Returns a difference score (0.0=identical, 1.0=completely different)."""
-        ...
+    def score(self, reference: Any, candidate_png: bytes) -> float: ...
 
 
 @dataclass(frozen=True)
