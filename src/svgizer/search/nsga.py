@@ -15,12 +15,15 @@ Diversity: when building the selection pool, near-duplicate nodes (normalised
 edit distance >= diversity_threshold) are skipped to prevent crossover waste.
 """
 
+import logging
 import random
 from difflib import SequenceMatcher
 from typing import Generic, TypeVar
 
 from svgizer.search.base import ncd
 from svgizer.search.models import ChainState, Result, SearchNode
+
+log = logging.getLogger(__name__)
 
 TState = TypeVar("TState")
 
@@ -97,7 +100,7 @@ def crowding_distance(
                 - objectives[sorted_front[k - 1].id][m]
             ) / obj_range
 
-    return distances
+        return distances
 
 
 class NsgaStrategy(Generic[TState]):
@@ -219,6 +222,9 @@ class NsgaStrategy(Generic[TState]):
             ncd(candidates[i].content, candidates[j].content)  # type: ignore[arg-type]
             for i, j in sample_pairs
         ) / len(sample_pairs)
+
+        log.info(f"Evaluated pool diversity (mean NCD): {mean_ncd:.4f} (Threshold: {self.diversity_boost_threshold})")
+
         return mean_ncd < self.diversity_boost_threshold
 
     def create_new_state(self, result: Result[TState]) -> ChainState[TState]:
