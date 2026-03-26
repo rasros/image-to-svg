@@ -99,7 +99,7 @@ def crowding_distance(
                 - objectives[sorted_front[k - 1].id][m]
             ) / obj_range
 
-        return distances
+    return distances
 
 
 class NsgaStrategy(Generic[TState]):
@@ -114,9 +114,10 @@ class NsgaStrategy(Generic[TState]):
                                     rank then crowding distance.
         crossover_prob:             Probability of selecting two parents instead of one.
         diversity_threshold:        MinHash Jaccard similarity above which two nodes are
-                                    considered near-duplicates. The lower-quality duplicate is
-                                    dropped from the pool. Set to 1.0 to disable.
-        diversity_boost_threshold:  Mean Jaccard distance below which to recommend LLM seeding.
+                                    considered near-duplicates. The lower-quality
+                                    duplicate is dropped from the pool.
+                                    Set to 1.0 to disable.
+        diversity_boost_threshold:  Mean distance below which to recommend LLM seeding.
     """
 
     def __init__(
@@ -221,9 +222,7 @@ class NsgaStrategy(Generic[TState]):
             for i, j in sample_pairs
         ) / len(sample_pairs)
 
-        log.info(
-            f"Evaluated pool diversity (mean MinHash dist): {mean_distance:.4f} (Threshold: {self.diversity_boost_threshold})"
-        )
+        log.info(f"Evaluated pool diversity (mean MinHash dist): {mean_distance:.4f}")
 
         return mean_distance < self.diversity_boost_threshold
 

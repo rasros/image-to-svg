@@ -12,7 +12,6 @@ from svgizer.image_utils import (
 )
 from svgizer.score import ScorerType, get_scorer
 from svgizer.score.complexity import svg_complexity
-from svgizer.search.base import compute_signature
 from svgizer.search import (
     INVALID_SCORE,
     ChainState,
@@ -23,6 +22,7 @@ from svgizer.search import (
     StorageAdapter,
     StrategyType,
 )
+from svgizer.search.base import compute_signature
 from svgizer.svg.adapter import SvgStatePayload, SvgStrategyAdapter
 from svgizer.svg.worker import worker_loop
 from svgizer.utils import setup_logger

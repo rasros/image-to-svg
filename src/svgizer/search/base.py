@@ -17,7 +17,9 @@ def compute_signature(
     if len(encoded) < ngram_size:
         ngrams = {encoded}
     else:
-        ngrams = {encoded[i : i + ngram_size] for i in range(len(encoded) - ngram_size + 1)}
+        ngrams = {
+            encoded[i : i + ngram_size] for i in range(len(encoded) - ngram_size + 1)
+        }
 
     sig = []
     for i in range(num_perms):
@@ -32,7 +34,7 @@ def estimate_jaccard(
     """Estimate Jaccard similarity from two MinHash signatures (0.0 to 1.0)."""
     if not sig1 or not sig2 or len(sig1) != len(sig2):
         return 0.0
-    matches = sum(1 for a, b in zip(sig1, sig2) if a == b)
+    matches = sum(1 for a, b in zip(sig1, sig2, strict=False) if a == b)
     return matches / len(sig1)
 
 

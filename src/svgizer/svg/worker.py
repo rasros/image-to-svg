@@ -13,8 +13,8 @@ from svgizer.image_utils import (
 )
 from svgizer.llm import LLMConfig, get_provider
 from svgizer.score.complexity import svg_complexity
-from svgizer.search.base import compute_signature
 from svgizer.search import INVALID_SCORE, Result
+from svgizer.search.base import compute_signature
 from svgizer.svg.adapter import SvgResultPayload
 from svgizer.svg.operations import (
     crossover_with_micro_search,

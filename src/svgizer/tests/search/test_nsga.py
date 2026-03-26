@@ -1,4 +1,5 @@
 from svgizer.search import ChainState, Result, SearchNode
+from svgizer.search.base import compute_signature
 from svgizer.search.nsga import (
     NsgaStrategy,
     _dominates,
@@ -18,13 +19,14 @@ def make_node(
     content: str | None = None,
 ) -> SearchNode:
     state = ChainState(score=score, payload=None)
+    sig = compute_signature(content) if content else None
     return SearchNode(
         score=score,
         id=node_id,
         parent_id=0,
         state=state,
         complexity=complexity,
-        content=content,
+        signature=sig,
     )
 
 
@@ -200,11 +202,12 @@ def test_diversity_admits_distinct_nodes():
 
 def test_diversity_rejects_near_duplicate_with_worse_score():
     """A node nearly identical to a better node must be excluded from the pool."""
-    base = "<svg>" + "x" * 500 + "</svg>"
-    near_dup = "<svg>" + "x" * 499 + "y</svg>"  # one char differs — very similar
+    # Provide enough unique n-grams so MinHash performs reliably
+    base_content = "<svg>" + "".join(str(i) for i in range(500)) + "</svg>"
+    near_dup = base_content[:-10] + "YYYY</svg>"  # small tweak at the end
 
     strategy = NsgaStrategy(pool_size=5, crossover_prob=0.0, diversity_threshold=0.97)
-    good = make_node(1, 0.1, content=base)
+    good = make_node(1, 0.1, content=base_content)
     near = make_node(2, 0.9, content=near_dup)  # worse score
     different = make_node(3, 0.5, content="<svg><completely different/></svg>")
 
@@ -230,9 +233,9 @@ def test_diversity_admits_node_with_no_content():
 
 def test_diversity_disabled_at_threshold_one():
     """Setting diversity_threshold=1.0 disables filtering entirely."""
-    base = "<svg>" + "x" * 500 + "</svg>"
+    base_content = "<svg>" + "".join(str(i) for i in range(500)) + "</svg>"
     strategy = NsgaStrategy(pool_size=5, crossover_prob=0.0, diversity_threshold=1.0)
-    nodes = [make_node(i, i * 0.1, content=base) for i in range(1, 4)]
+    nodes = [make_node(i, i * 0.1, content=base_content) for i in range(1, 4)]
     # All identical content but filtering is disabled — no crash, any id valid
     for _ in range(10):
         pid, _ = strategy.select_parent(nodes, 0.0)
@@ -338,7 +341,10 @@ def test_should_not_diversify_diverse_pool():
     """A highly diverse pool does not trigger the boost."""
     strategy = NsgaStrategy(diversity_boost_threshold=0.01)
     nodes = [
-        make_node(i, 0.1, content=f"<svg><circle r='{i}'/></svg>") for i in range(1, 5)
+        make_node(
+            i, 0.1, content=f"<svg><circle r='{i * 1000}' cx='{i}' cy='{i}'/></svg>"
+        )
+        for i in range(1, 5)
     ]
     assert strategy.should_diversify(nodes) is False
 
@@ -346,6 +352,6 @@ def test_should_not_diversify_diverse_pool():
 def test_should_not_diversify_too_few_nodes():
     """A pool that is too small shouldn't be prematurely checked."""
     strategy = NsgaStrategy(diversity_boost_threshold=0.99)
-    nodes = [make_node(i, 0.1, content="<svg><circle/></svg>") for i in range(1, 4)]
+    nodes = [make_node(i, 0.1) for i in range(1, 4)]
     # < 4 nodes returns False early
     assert strategy.should_diversify(nodes) is False
