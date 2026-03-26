@@ -164,81 +164,6 @@ def mutate_remove_node(svg: str) -> str:
         return svg
 
 
-def mutate_insert_node(svg: str) -> str:
-    try:
-        root = ET.fromstring(svg)
-
-        # Pick a random parent: either the root or a group
-        parents = [root, *list(root.iter(f"{{{SVG_NS}}}g")), *list(root.iter("g"))]
-        parent = random.choice(parents)
-
-        shapes = ["rect", "circle"]
-        shape_type = random.choice(shapes)
-
-        new_node = ET.Element(shape_type)
-
-        # Generate random color and opacity
-        color = f"#{random.randint(0, 0xFFFFFF):06x}"
-        opacity = f"{random.uniform(0.1, 0.9):.2f}"
-
-        new_node.attrib["fill"] = color
-        new_node.attrib["opacity"] = opacity
-
-        # Using percentages ensures it stays within relative bounds
-        if shape_type == "circle":
-            new_node.attrib["cx"] = f"{random.uniform(0, 100):.1f}%"
-            new_node.attrib["cy"] = f"{random.uniform(0, 100):.1f}%"
-            new_node.attrib["r"] = f"{random.uniform(1, 20):.1f}%"
-        else:
-            new_node.attrib["x"] = f"{random.uniform(0, 100):.1f}%"
-            new_node.attrib["y"] = f"{random.uniform(0, 100):.1f}%"
-            new_node.attrib["width"] = f"{random.uniform(2, 25):.1f}%"
-            new_node.attrib["height"] = f"{random.uniform(2, 25):.1f}%"
-
-        parent.append(new_node)
-
-        ET.register_namespace("", SVG_NS)
-        return ET.tostring(root, encoding="unicode", method="xml")
-    except ET.ParseError:
-        return svg
-
-
-def mutate_duplicate_node(svg: str) -> str:
-    try:
-        root = ET.fromstring(svg)
-
-        # Get all manipulable elements except the root itself
-        elements = [el for el in root.iter() if el is not root]
-        if not elements:
-            return svg
-
-        target = random.choice(elements)
-
-        # Locate target's parent
-        parent_elem = None
-        for p in root.iter():
-            if target in list(p):
-                parent_elem = p
-                break
-
-        if parent_elem is not None:
-            dup = copy.deepcopy(target)
-            # Add a minor translation so it doesn't overlap perfectly
-            shift_x = random.uniform(-10, 10)
-            shift_y = random.uniform(-10, 10)
-            existing_transform = dup.get("transform", "")
-            dup.set(
-                "transform",
-                f"{existing_transform} translate({shift_x:.1f}, {shift_y:.1f})".strip(),
-            )
-            parent_elem.append(dup)
-
-        ET.register_namespace("", SVG_NS)
-        return ET.tostring(root, encoding="unicode", method="xml")
-    except ET.ParseError:
-        return svg
-
-
 def mutate_drop_style_property(svg: str) -> str:
     try:
         root = ET.fromstring(svg)
@@ -325,22 +250,12 @@ def mutate_with_micro_search(
 
     def _op():
         roll = random.random()
-        if roll < 0.20:
+        if roll < 0.25:
             cand = with_retries(
                 lambda: mutate_remove_node(parent_svg), fallback=parent_svg
             )
             return cand, "Mutation: removed node"
-        if roll < 0.40:
-            cand = with_retries(
-                lambda: mutate_insert_node(parent_svg), fallback=parent_svg
-            )
-            return cand, "Mutation: inserted node"
-        if roll < 0.60:
-            cand = with_retries(
-                lambda: mutate_duplicate_node(parent_svg), fallback=parent_svg
-            )
-            return cand, "Mutation: duplicated node"
-        if roll < 0.80:
+        if roll < 0.75:
             cand = with_retries(lambda: mutate_numeric(parent_svg), fallback=parent_svg)
             return cand, "Mutation: tweaked value"
 
