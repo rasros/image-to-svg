@@ -69,6 +69,6 @@ def test_default_diversity_thresholds():
     assert args.diversity_boost_threshold == DEFAULT_DIVERSITY_BOOST_THRESHOLD
 
 
-def test_default_patience_zero():
+def test_default_epoch_patience_zero():
     args = parse_args(["img.png"])
-    assert args.patience == 0
+    assert args.epoch_patience == 0

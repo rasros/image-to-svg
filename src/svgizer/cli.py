@@ -136,12 +136,12 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "--warmup-llm",
+        "--seed-tasks",
         type=int,
         default=-1,
-        dest="warmup_llm",
+        dest="seed_tasks",
         help=(
-            "Target number of LLM-seeded nodes before switching to hybrid mode. "
+            "Target number of LLM-seeded nodes for epoch 0. "
             "Resumed nodes count toward this. "
             "Defaults to pool-size // 10 when -1."
         ),
@@ -169,12 +169,14 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "--patience",
+        "--epoch-patience",
         type=int,
         default=0,
+        dest="epoch_patience",
         help=(
-            "Stop early if best score does not improve by --min-delta over this many "
-            "consecutive tasks. 0 disables early stopping."
+            "End the current epoch and re-seed from the Pareto front if the best score "
+            "does not improve by --min-delta over this many consecutive tasks. "
+            "0 disables staleness-based epoch transitions."
         ),
     )
     parser.add_argument(

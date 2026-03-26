@@ -10,7 +10,6 @@ def build_svg_gen_prompt(
     rasterized_svg_data_url: str | None = None,
     change_summary: str | None = None,
     diff_data_url: str | None = None,
-    force_diverse: bool = False,
 ) -> list[dict[str, Any]]:
     lines = [
         "You are a world-class SVG developer. Convert the input raster into a CLEAN,"
@@ -25,15 +24,7 @@ def build_svg_gen_prompt(
         f"Context: Iteration #{iter_index}.",
     ]
 
-    if force_diverse:
-        lines.append(
-            "DIVERSITY MUTATION: The current SVG approach has converged. You must "
-            "produce a RADICAL REFACTOR of the geometric structure. Preserve the "
-            "visual likeness to the target image, but use completely different "
-            "SVG primitives, grouping strategies, or coordinate mapping to "
-            "escape local minima."
-        )
-    elif svg_prev is None:
+    if svg_prev is None:
         lines.append("First attempt: Create a high-level structural blocking.")
     else:
         lines.append(

@@ -48,11 +48,11 @@ def run_svg_search(
     llm_model: str,
     reasoning: str,
     write_lineage: bool = True,
-    patience: int | None = None,
+    epoch_patience: int | None = None,
     min_delta: float = 1e-4,
     llm_rate: float = 0.2,
     pool_size: int = 20,
-    warmup_llm: int = -1,
+    seed_tasks: int = -1,
     diversity_threshold: float = 0.97,
     diversity_boost_threshold: float = 0.10,
 ) -> None:
@@ -211,20 +211,14 @@ def run_svg_search(
             diversity_boost_threshold=diversity_boost_threshold,
         )
 
-    warmup_target = pool_size // 10 if warmup_llm < 0 else warmup_llm
+    seed_target = pool_size // 10 if seed_tasks < 0 else seed_tasks
     seeded = sum(1 for n in initial_nodes if n.state.payload.svg)
-    warmup_tasks = max(0, warmup_target - seeded)
+    epoch0_seed_tasks = max(0, seed_target - seeded)
 
-    warmup_diverse = 0
-    if seeded > 0 and base_strategy.should_diversify(initial_nodes):
-        log.warning("Initial pool lacks diversity. Triggering resume shock.")
-        warmup_diverse = max(1, pool_size // 4)
-
-    if warmup_tasks > 0 or warmup_diverse > 0:
+    if epoch0_seed_tasks > 0:
         log.info(
-            f"Warmup: {warmup_tasks} regular LLM tasks, "
-            f"{warmup_diverse} diverse LLM tasks "
-            f"(target={warmup_target}, already seeded={seeded})"
+            f"Epoch 0: {epoch0_seed_tasks} LLM seed tasks "
+            f"(target={seed_target}, already seeded={seeded})"
         )
 
     strategy = SvgStrategyAdapter(base_strategy, image_long_side, write_lineage)
@@ -258,10 +252,9 @@ def run_svg_search(
         initial_nodes,
         max_accepts,
         max_wall_seconds,
-        patience,
+        epoch_patience,
         min_delta,
         pool_size,
         score_fn,
-        warmup_tasks,
-        warmup_diverse=warmup_diverse,
+        epoch0_seed_tasks,
     )

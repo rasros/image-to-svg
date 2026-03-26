@@ -24,6 +24,14 @@ class GreedyHillClimbingStrategy(Generic[TState]):
         _ = pool
         return False
 
+    def epoch_seeds(
+        self, pool: list[SearchNode[TState]], max_seeds: int
+    ) -> list[SearchNode[TState]]:
+        valid = [n for n in pool if n.score < float("inf")]
+        if not valid:
+            return pool[:max_seeds]
+        return sorted(valid, key=lambda n: n.score)[:max_seeds]
+
     def create_new_state(self, result: Result) -> ChainState[TState]:
         return ChainState(
             score=result.score,

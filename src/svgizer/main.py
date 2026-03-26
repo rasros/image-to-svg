@@ -73,11 +73,11 @@ def main():
             llm_model=model,
             reasoning=args.reasoning,
             write_lineage=args.write_lineage,
-            patience=args.patience or None,
+            epoch_patience=args.epoch_patience or None,
             min_delta=args.min_delta,
             llm_rate=args.llm_rate,
             pool_size=args.pool_size,
-            warmup_llm=args.warmup_llm,
+            seed_tasks=args.seed_tasks,
             diversity_threshold=args.diversity_threshold,
             diversity_boost_threshold=args.diversity_boost_threshold,
         )

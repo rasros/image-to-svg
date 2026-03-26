@@ -51,7 +51,13 @@ class SearchStrategy(Protocol[TState]):
     def create_new_state(self, result: Result[TState]) -> ChainState[TState]: ...
 
     def should_diversify(self, pool: list[SearchNode]) -> bool:
-        """Return True when the pool has converged and fresh LLM seeds are needed."""
+        """Return True when the pool has converged and a new epoch should start."""
+        ...
+
+    def epoch_seeds(
+        self, pool: list[SearchNode[TState]], max_seeds: int
+    ) -> list[SearchNode[TState]]:
+        """Select diverse nodes from the pool to seed the next epoch."""
         ...
 
     @property

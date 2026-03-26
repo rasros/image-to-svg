@@ -32,6 +32,9 @@ class FakeStrategy:
         _ = pool
         return False
 
+    def epoch_seeds(self, pool: list[SearchNode], max_seeds: int) -> list[SearchNode]:
+        return pool[:max_seeds]
+
 
 class FakeStorage:
     def __init__(self):
@@ -114,11 +117,25 @@ def test_engine_respects_max_wall_seconds(monkeypatch):
     assert True
 
 
-def test_engine_patience_stops_on_no_improvement():
-    strat = FakeStrategy()
-    store = FakeStorage()
-    engine = MultiprocessSearchEngine(workers=1, strategy=strat, storage=store)
+def test_engine_epoch_patience_triggers_transition():
+    """epoch_patience triggers epoch transition (not global stop) after N stale tasks."""
 
+    class TrackingStrategy(FakeStrategy):
+        def __init__(self):
+            self.epoch_seeds_calls = 0
+
+        def epoch_seeds(self, pool, max_seeds):
+            self.epoch_seeds_calls += 1
+            return pool[:max_seeds]
+
+    strat = TrackingStrategy()
+    store = FakeStorage()
+    # max_total_tasks=3 stops the engine after the epoch transition completes
+    engine = MultiprocessSearchEngine(
+        workers=1, strategy=strat, storage=store, max_total_tasks=3
+    )
+
+    # 3 results that don't improve by min_delta=0.1 from initial score of 0.5
     for score in (0.49, 0.48, 0.47):
         engine.unscored_q.put(
             Result(
@@ -138,17 +155,33 @@ def test_engine_patience_stops_on_no_improvement():
         initial_nodes=[initial_node],
         max_accepts=100,
         max_wall_seconds=None,
-        patience=3,
+        epoch_patience=3,
         min_delta=0.1,
     )
+    assert strat.epoch_seeds_calls >= 1
     assert store.save_called
 
 
-def test_engine_patience_resets_on_improvement():
-    strat = FakeStrategy()
-    store = FakeStorage()
-    engine = MultiprocessSearchEngine(workers=1, strategy=strat, storage=store)
+def test_engine_epoch_patience_resets_on_improvement():
+    """Epoch patience counter resets when a node improves beyond min_delta."""
 
+    class TrackingStrategy(FakeStrategy):
+        def __init__(self):
+            self.epoch_seeds_calls = 0
+
+        def epoch_seeds(self, pool, max_seeds):
+            self.epoch_seeds_calls += 1
+            return pool[:max_seeds]
+
+    strat = TrackingStrategy()
+    store = FakeStorage()
+    # 3 tasks: first improves (resets counter), then 2 more don't → epoch at task 3
+    engine = MultiprocessSearchEngine(
+        workers=1, strategy=strat, storage=store, max_total_tasks=3
+    )
+
+    # Score 0.1 improves from 0.5 by 0.4 >= min_delta=0.1 → resets counter
+    # Scores 0.09, 0.08 don't improve from 0.1 by 0.1 → no_improve=1,2
     for score in (0.1, 0.09, 0.08):
         engine.unscored_q.put(
             Result(
@@ -168,16 +201,29 @@ def test_engine_patience_resets_on_improvement():
         initial_nodes=[initial_node],
         max_accepts=100,
         max_wall_seconds=None,
-        patience=2,
+        epoch_patience=2,
         min_delta=0.1,
     )
+    # With improvement at task 1 resetting the counter, epoch ends at task 3 (2 no-improves after reset)
+    assert strat.epoch_seeds_calls >= 1
     assert store.save_called
 
 
-def test_engine_patience_disabled_at_zero():
+def test_engine_epoch_patience_none_no_transitions():
+    """No epoch transitions when epoch_patience is not set."""
+
+    class TrackingStrategy(FakeStrategy):
+        def __init__(self):
+            self.epoch_seeds_calls = 0
+
+        def epoch_seeds(self, pool, max_seeds):
+            self.epoch_seeds_calls += 1
+            return pool[:max_seeds]
+
+    strat = TrackingStrategy()
     engine = MultiprocessSearchEngine(
         workers=1,
-        strategy=FakeStrategy(),
+        strategy=strat,
         storage=FakeStorage(),
         max_total_tasks=0,
     )
@@ -188,9 +234,9 @@ def test_engine_patience_disabled_at_zero():
         initial_nodes=[dummy_node],
         max_accepts=10,
         max_wall_seconds=None,
-        patience=0,
+        epoch_patience=None,
     )
-    assert True
+    assert strat.epoch_seeds_calls == 0
 
 
 def test_engine_respects_max_total_tasks():
@@ -222,7 +268,9 @@ def test_engine_active_pool_bounded():
 
     strat = TrackingStrategy()
     store = FakeStorage()
-    engine = MultiprocessSearchEngine(workers=1, strategy=strat, storage=store)
+    engine = MultiprocessSearchEngine(
+        workers=1, strategy=strat, storage=store, max_total_tasks=10
+    )
 
     for i in range(10):
         engine.unscored_q.put(
@@ -241,7 +289,7 @@ def test_engine_active_pool_bounded():
     )
     engine.run(
         initial_nodes=[initial_node],
-        max_accepts=10,
+        max_accepts=100,
         max_wall_seconds=None,
         active_pool_size=3,
     )

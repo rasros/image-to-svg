@@ -288,3 +288,57 @@ def test_should_not_diversify_too_few_nodes():
     strategy = NsgaStrategy(diversity_boost_threshold=0.99)
     nodes = [make_node(i, 0.1) for i in range(1, 4)]
     assert strategy.should_diversify(nodes) is False
+
+
+def test_epoch_seeds_returns_pareto_front():
+    strategy = NsgaStrategy(pool_size=10, diversity_threshold=0.97)
+    # Node 2 dominates node 3 (better on both objectives)
+    # Node 1 and 2 are non-dominated (each better on one objective)
+    nodes = [
+        make_node(1, 0.1, complexity=1000.0),  # good quality, complex
+        make_node(
+            2, 0.5, complexity=100.0
+        ),  # worse quality, simpler (dominates node 3)
+        make_node(3, 0.9, complexity=900.0),  # dominated by node 2
+    ]
+    # Request only 2 seeds so only the Pareto front (nodes 1,2) is returned
+    seeds = strategy.epoch_seeds(nodes, max_seeds=2)
+    seed_ids = {n.id for n in seeds}
+    assert 1 in seed_ids
+    assert 2 in seed_ids
+    assert 3 not in seed_ids
+
+
+def test_epoch_seeds_respects_max_seeds():
+    strategy = NsgaStrategy(pool_size=10, diversity_threshold=0.97)
+    nodes = [make_node(i, i * 0.1, complexity=float(i * 100)) for i in range(1, 8)]
+    seeds = strategy.epoch_seeds(nodes, max_seeds=3)
+    assert len(seeds) <= 3
+
+
+def test_epoch_seeds_filters_near_duplicates():
+    base_content = "<svg>" + "".join(str(i) for i in range(500)) + "</svg>"
+    near_dup = base_content[:-10] + "YYYY</svg>"
+    strategy = NsgaStrategy(pool_size=10, diversity_threshold=0.97)
+    good = make_node(1, 0.1, complexity=100.0, content=base_content)
+    near = make_node(2, 0.1, complexity=100.0, content=near_dup)
+    different = make_node(
+        3, 0.2, complexity=200.0, content="<svg><completely different/></svg>"
+    )
+    seeds = strategy.epoch_seeds([good, near, different], max_seeds=3)
+    seed_ids = {n.id for n in seeds}
+    # near duplicate should be filtered out (too similar to good)
+    assert not (1 in seed_ids and 2 in seed_ids)
+
+
+def test_epoch_seeds_empty_pool_returns_empty():
+    strategy = NsgaStrategy(pool_size=10)
+    seeds = strategy.epoch_seeds([], max_seeds=5)
+    assert seeds == []
+
+
+def test_epoch_seeds_all_invalid_falls_back():
+    strategy = NsgaStrategy(pool_size=10)
+    nodes = [make_node(i, float("inf")) for i in range(1, 4)]
+    seeds = strategy.epoch_seeds(nodes, max_seeds=5)
+    assert len(seeds) <= 5

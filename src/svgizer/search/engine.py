@@ -49,16 +49,15 @@ class MultiprocessSearchEngine(Generic[TState]):
         initial_nodes: list[SearchNode[TState]],
         max_accepts: int,
         max_wall_seconds: float | None,
-        patience: int | None = None,
+        epoch_patience: int | None = None,
         min_delta: float = 1e-4,
         active_pool_size: int = 20,
         score_fn: Callable[[Result], float] | None = None,
-        warmup_tasks: int = 0,
-        warmup_diverse: int = 0,
+        seed_tasks: int = 0,
     ) -> None:
         start_time = time.monotonic()
 
-        # Track seen genomes to avoid redundant evaluations and maintain diversity
+        # Track seen genomes to avoid redundant evaluations
         seen_signatures: set[tuple[int, ...]] = {
             n.signature for n in initial_nodes if n.signature
         }
@@ -99,18 +98,18 @@ class MultiprocessSearchEngine(Generic[TState]):
         active_pool: list[SearchNode[TState]] = sorted_initial[:active_pool_size]
 
         best_node = sorted_initial[0] if sorted_initial else None
-        patience_best = best_node.score if best_node else float("inf")
-        no_improve_tasks = 0
+
+        # Epoch state
+        epoch = 0
+        epoch_no_improve = 0
+        epoch_patience_best = best_node.score if best_node else float("inf")
+        # Epoch 0: track how many seed tasks (force_llm) we've dispatched
+        epoch0_seeds_dispatched = 0
 
         next_task_id = 1
         tasks_completed = 0
         accepted_count = 0
         in_flight = 0
-
-        # Tracking for diversity exponential backoff
-        diverse_interval = 5
-        tasks_since_diverse = diverse_interval
-        diverse_task_ids = set()
 
         next_node_id = max(
             self.storage.max_node_id, max((n.id for n in initial_nodes), default=0)
@@ -134,12 +133,6 @@ class MultiprocessSearchEngine(Generic[TState]):
                 if tasks_completed >= self.max_total_tasks:
                     log.warning("Max task limit reached.")
                     break
-                if patience and no_improve_tasks >= patience:
-                    log.info(
-                        f"Patience exhausted: no improvement >= {min_delta} "
-                        f"over {patience} consecutive tasks."
-                    )
-                    break
 
                 while in_flight < self.workers and next_task_id <= self.max_total_tasks:
                     progress = (
@@ -147,25 +140,10 @@ class MultiprocessSearchEngine(Generic[TState]):
                     )
                     pid1, pid2 = self.strategy.select_parent(active_pool, progress)
 
-                    is_warmup = next_task_id <= warmup_tasks
-                    force_diverse = False
-
-                    if next_task_id <= warmup_diverse:
-                        force_diverse = True
-                    elif not is_warmup and tasks_since_diverse >= diverse_interval:
-                        force_diverse = self.strategy.should_diversify(active_pool)
-                        if force_diverse:
-                            log.warning(
-                                f"Pool diversity low. Dispatching fresh seed "
-                                f"(interval={diverse_interval})."
-                            )
-
-                    tasks_since_diverse = (
-                        0 if force_diverse else tasks_since_diverse + 1
-                    )
-
-                    if force_diverse:
-                        diverse_task_ids.add(next_task_id)
+                    # Epoch 0: seed with force_llm until seed_tasks are dispatched
+                    is_epoch0_seed = epoch == 0 and epoch0_seeds_dispatched < seed_tasks
+                    if is_epoch0_seed:
+                        epoch0_seeds_dispatched += 1
 
                     self.task_q.put(
                         Task(
@@ -175,8 +153,7 @@ class MultiprocessSearchEngine(Generic[TState]):
                             worker_slot=in_flight % self.workers,
                             secondary_parent_id=pid2,
                             secondary_parent_state=node_states[pid2] if pid2 else None,
-                            force_llm=is_warmup,
-                            force_diverse=force_diverse,
+                            force_llm=is_epoch0_seed,
                         )
                     )
                     next_task_id += 1
@@ -200,13 +177,9 @@ class MultiprocessSearchEngine(Generic[TState]):
 
                 in_flight -= 1
                 tasks_completed += 1
-                no_improve_tasks += 1
+                epoch_no_improve += 1
 
                 if not res.valid:
-                    if res.task_id in diverse_task_ids:
-                        diverse_task_ids.discard(res.task_id)
-                        diverse_interval = min(diverse_interval * 2, 200)
-
                     if res.llm_type:
                         log.info(
                             f"[{res.llm_type.upper()} INVALID] task={res.task_id} msg={res.invalid_msg}"
@@ -247,11 +220,6 @@ class MultiprocessSearchEngine(Generic[TState]):
                     evicted_node = active_pool.pop(worst_idx)
 
                     if evicted_node is new_node:
-                        # Failed to enter the pool, reject it.
-                        if res.task_id in diverse_task_ids:
-                            diverse_task_ids.discard(res.task_id)
-                            diverse_interval = min(diverse_interval + 5, 25)
-
                         if res.llm_type:
                             log.info(
                                 f"[{res.llm_type.upper()} REJECTED] node={new_node.id} score={new_node.score:.6f} (worse than pool)"
@@ -262,16 +230,12 @@ class MultiprocessSearchEngine(Generic[TState]):
                             )
                         continue
 
-                if res.task_id in diverse_task_ids:
-                    diverse_task_ids.discard(res.task_id)
-                    diverse_interval = 5
-
                 node_states[new_node.id] = new_state
                 accepted_count += 1
 
-                if new_node.score <= patience_best - min_delta:
-                    patience_best = new_node.score
-                    no_improve_tasks = 0
+                if new_node.score <= epoch_patience_best - min_delta:
+                    epoch_patience_best = new_node.score
+                    epoch_no_improve = 0
 
                 if best_node is None or new_node.score < best_node.score:
                     best_node = new_node
@@ -294,6 +258,36 @@ class MultiprocessSearchEngine(Generic[TState]):
                         )
 
                 self.storage.save_node(new_node)
+
+                # Check epoch-end conditions (only once epoch 0 seed phase is complete)
+                past_seed_phase = epoch > 0 or epoch0_seeds_dispatched >= seed_tasks
+                if past_seed_phase:
+                    staleness = (
+                        epoch_patience is not None
+                        and epoch_no_improve >= epoch_patience
+                    )
+                    low_diversity = self.strategy.should_diversify(active_pool)
+
+                    if staleness or low_diversity:
+                        reason = "staleness" if staleness else "low diversity"
+                        log.info(
+                            f"Epoch {epoch} → {epoch + 1}: {reason} "
+                            f"(no_improve={epoch_no_improve}, pool={len(active_pool)})"
+                        )
+                        epoch += 1
+                        seeds = self.strategy.epoch_seeds(active_pool, active_pool_size)
+                        if seeds:
+                            active_pool = seeds
+                        epoch_no_improve = 0
+                        valid_scores = [
+                            n.score for n in active_pool if n.score < float("inf")
+                        ]
+                        epoch_patience_best = (
+                            min(valid_scores) if valid_scores else float("inf")
+                        )
+                        log.info(
+                            f"Epoch {epoch}: seeded with {len(active_pool)} Pareto-front nodes."
+                        )
 
         finally:
             self._shutdown()

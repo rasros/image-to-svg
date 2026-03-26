@@ -44,6 +44,11 @@ class SvgStrategyAdapter:
     def should_diversify(self, pool: list[SearchNode[SvgStatePayload]]) -> bool:
         return self.base_strategy.should_diversify(pool)
 
+    def epoch_seeds(
+        self, pool: list[SearchNode[SvgStatePayload]], max_seeds: int
+    ) -> list[SearchNode[SvgStatePayload]]:
+        return self.base_strategy.epoch_seeds(pool, max_seeds)
+
     def create_new_state(self, result: Result) -> ChainState[SvgStatePayload]:
         new_state = self.base_strategy.create_new_state(result)
         result_payload: SvgResultPayload = result.payload

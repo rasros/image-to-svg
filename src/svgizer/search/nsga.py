@@ -164,6 +164,42 @@ class NsgaStrategy(Generic[TState]):
 
         return p1.id, None
 
+    def epoch_seeds(
+        self, pool: list[SearchNode[TState]], max_seeds: int
+    ) -> list[SearchNode[TState]]:
+        """Return a diverse Pareto-front subset to seed the next epoch."""
+        valid = [n for n in pool if n.score < float("inf")]
+        if not valid:
+            return pool[:max_seeds]
+
+        max_score = max(n.score for n in valid) or 1.0
+        max_complexity = max(n.complexity for n in valid) or 1.0
+        objectives: dict[int, Objectives] = {
+            n.id: (n.score / max_score, n.complexity / max_complexity) for n in valid
+        }
+
+        fronts = non_dominated_sort(valid, objectives)
+        seeds: list[SearchNode[TState]] = []
+
+        for front in fronts:
+            if len(seeds) >= max_seeds:
+                break
+            distances = crowding_distance(front, objectives)
+            front_sorted = sorted(front, key=lambda n: -distances[n.id])
+            for node in front_sorted:
+                if len(seeds) >= max_seeds:
+                    break
+                if not any(
+                    node.signature
+                    and s.signature
+                    and estimate_jaccard(node.signature, s.signature)
+                    >= self.diversity_threshold
+                    for s in seeds
+                ):
+                    seeds.append(node)
+
+        return seeds or valid[:max_seeds]
+
     def should_diversify(self, pool: list[SearchNode[TState]]) -> bool:
         candidates = [n for n in pool if n.signature and n.score < float("inf")]
         if len(candidates) < 4:
