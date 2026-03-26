@@ -71,9 +71,13 @@ def test_save_node_and_lineage(tmp_path, dummy_node):
             "secondary_parent",
             "score",
             "summary",
+            "svg_md5",
         ]
         assert reader[1][0] == "42"
         assert reader[1][4] == "Fixed circle"
+        import hashlib
+        expected_md5 = hashlib.md5("<svg><circle r='10'/></svg>".encode()).hexdigest()
+        assert reader[1][5] == expected_md5
 
 
 def test_load_resume_nodes(tmp_path):

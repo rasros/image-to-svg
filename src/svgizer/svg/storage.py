@@ -1,5 +1,6 @@
 import base64
 import csv
+import hashlib
 import logging
 import re
 from datetime import datetime
@@ -149,12 +150,17 @@ class FileStorageAdapter:
                 log.debug(f"Could not save preview PNG: {e}")
 
         # 3. Update Lineage CSV
+        svg_md5 = (
+            hashlib.md5(node.state.payload.svg.encode()).hexdigest()
+            if node.state.payload.svg
+            else ""
+        )
         exists = self.lineage_csv.is_file()
         with self.lineage_csv.open("a", encoding="utf-8", newline="") as f:
             writer = csv.writer(f)
             if not exists:
                 writer.writerow(
-                    ["id", "parent", "secondary_parent", "score", "summary"]
+                    ["id", "parent", "secondary_parent", "score", "summary", "svg_md5"]
                 )
             writer.writerow(
                 [
@@ -163,5 +169,6 @@ class FileStorageAdapter:
                     node.secondary_parent_id or "",
                     f"{node.score:.6f}",
                     node.state.payload.change_summary or "",
+                    svg_md5,
                 ]
             )
