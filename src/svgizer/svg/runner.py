@@ -14,7 +14,6 @@ from svgizer.score import ScorerType, get_scorer
 from svgizer.search import (
     INVALID_SCORE,
     ChainState,
-    GeneticPoolStrategy,
     GreedyHillClimbingStrategy,
     MultiprocessSearchEngine,
     NsgaStrategy,
@@ -115,10 +114,8 @@ def run_svg_search(
     # 6. Search Execution Setup
     if strategy_type == StrategyType.GREEDY:
         base_strategy = GreedyHillClimbingStrategy[SvgStatePayload]()
-    elif strategy_type == StrategyType.NSGA:
-        base_strategy = NsgaStrategy[SvgStatePayload](pool_size=20, crossover_prob=0.25)
     else:
-        base_strategy = GeneticPoolStrategy[SvgStatePayload](top_k=3)
+        base_strategy = NsgaStrategy[SvgStatePayload](pool_size=20, crossover_prob=0.25)
 
     strategy = SvgStrategyAdapter(base_strategy, image_long_side, write_lineage)
     engine = MultiprocessSearchEngine(

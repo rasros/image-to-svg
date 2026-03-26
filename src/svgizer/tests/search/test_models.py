@@ -34,9 +34,9 @@ def test_search_node_equality_with_identical_scores():
 
 
 def test_strategy_type_enum():
-    assert StrategyType.GENETIC == "genetic"
     assert StrategyType.GREEDY == "greedy"
-    assert "genetic" in [e.value for e in StrategyType]
+    assert StrategyType.NSGA == "nsga"
+    assert "genetic" not in [e.value for e in StrategyType]
 
 
 def test_invalid_score_constant():

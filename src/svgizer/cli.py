@@ -50,7 +50,7 @@ def parse_args():
         "--strategy",
         type=str,
         choices=[e.value for e in StrategyType],
-        default=StrategyType.GENETIC.value,
+        default=StrategyType.NSGA.value,
         help="Search strategy/evolution algorithm to use.",
     )
 

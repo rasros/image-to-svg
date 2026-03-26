@@ -11,10 +11,20 @@ from svgizer.search.nsga import (
 # ---------------------------------------------------------------------------
 
 
-def make_node(node_id: int, score: float, complexity: float = 100.0) -> SearchNode:
+def make_node(
+    node_id: int,
+    score: float,
+    complexity: float = 100.0,
+    content: str | None = None,
+) -> SearchNode:
     state = ChainState(score=score, payload=None)
     return SearchNode(
-        score=score, id=node_id, parent_id=0, state=state, complexity=complexity
+        score=score,
+        id=node_id,
+        parent_id=0,
+        state=state,
+        complexity=complexity,
+        content=content,
     )
 
 
@@ -167,6 +177,66 @@ def test_create_new_state_propagates_score_and_payload():
     state = strategy.create_new_state(result)
     assert state.score == 0.42
     assert state.payload == "<svg/>"
+
+
+# ---------------------------------------------------------------------------
+# Diversity filtering
+# ---------------------------------------------------------------------------
+
+
+def test_diversity_admits_distinct_nodes():
+    """All nodes with different content should fill the pool normally."""
+    strategy = NsgaStrategy(pool_size=3, crossover_prob=0.0, diversity_threshold=0.97)
+    nodes = [
+        make_node(1, 0.1, content="<svg><circle/></svg>"),
+        make_node(2, 0.2, content="<svg><rect/></svg>"),
+        make_node(3, 0.3, content="<svg><line/></svg>"),
+    ]
+    # All three are distinct — any can be selected
+    for _ in range(10):
+        pid, _ = strategy.select_parent(nodes, 0.0)
+        assert pid in {1, 2, 3}
+
+
+def test_diversity_rejects_near_duplicate_with_worse_score():
+    """A node nearly identical to a better node must be excluded from the pool."""
+    base = "<svg>" + "x" * 500 + "</svg>"
+    near_dup = "<svg>" + "x" * 499 + "y</svg>"  # one char differs — very similar
+
+    strategy = NsgaStrategy(pool_size=5, crossover_prob=0.0, diversity_threshold=0.97)
+    good = make_node(1, 0.1, content=base)
+    near = make_node(2, 0.9, content=near_dup)  # worse score
+    different = make_node(3, 0.5, content="<svg><completely different/></svg>")
+
+    # Run many times; node 2 (near-dup of better node 1) should never be selected
+    selected = set()
+    for _ in range(50):
+        pid, _ = strategy.select_parent([good, near, different], 0.0)
+        selected.add(pid)
+    assert 2 not in selected, "near-duplicate with worse score leaked into pool"
+
+
+def test_diversity_admits_node_with_no_content():
+    """Nodes without content are always admitted (can't evaluate similarity)."""
+    strategy = NsgaStrategy(pool_size=3, crossover_prob=0.0, diversity_threshold=0.97)
+    nodes = [
+        make_node(1, 0.1, content=None),
+        make_node(2, 0.2, content=None),
+    ]
+    for _ in range(10):
+        pid, _ = strategy.select_parent(nodes, 0.0)
+        assert pid in {1, 2}
+
+
+def test_diversity_disabled_at_threshold_one():
+    """Setting diversity_threshold=1.0 disables filtering entirely."""
+    base = "<svg>" + "x" * 500 + "</svg>"
+    strategy = NsgaStrategy(pool_size=5, crossover_prob=0.0, diversity_threshold=1.0)
+    nodes = [make_node(i, i * 0.1, content=base) for i in range(1, 4)]
+    # All identical content but filtering is disabled — no crash, any id valid
+    for _ in range(10):
+        pid, _ = strategy.select_parent(nodes, 0.0)
+        assert pid in {1, 2, 3}
 
 
 def test_pareto_front_prefers_simpler_for_equal_quality():

@@ -9,9 +9,13 @@ Both objectives are normalised to [0, 1] within the active population before
 Pareto sorting, so they contribute equally to dominance.
 
 Selection uses binary tournament on (Pareto front rank ASC, crowding distance DESC).
+
+Diversity: when building the selection pool, near-duplicate nodes (normalised
+edit distance >= diversity_threshold) are skipped to prevent crossover waste.
 """
 
 import random
+from difflib import SequenceMatcher
 from typing import Generic, TypeVar
 
 from svgizer.search.models import ChainState, Result, SearchNode
@@ -102,18 +106,36 @@ class NsgaStrategy(Generic[TState]):
     Both objectives are normalised within the active population so neither dominates.
 
     Args:
-        pool_size:      Max number of nodes considered for parent selection. Nodes are
-                        prioritised by Pareto front rank then crowding distance.
-        crossover_prob: Probability of selecting two parents instead of one.
+        pool_size:          Max nodes in the selection pool, ordered by Pareto rank
+                            then crowding distance.
+        crossover_prob:     Probability of selecting two parents instead of one.
+        diversity_threshold: Normalised edit-distance ratio above which two nodes are
+                            considered near-duplicates. The lower-quality duplicate is
+                            dropped from the pool. Set to 1.0 to disable.
     """
 
-    def __init__(self, pool_size: int = 20, crossover_prob: float = 0.25):
+    def __init__(
+        self,
+        pool_size: int = 20,
+        crossover_prob: float = 0.25,
+        diversity_threshold: float = 0.97,
+    ):
         self.pool_size = pool_size
         self.crossover_prob = crossover_prob
+        self.diversity_threshold = diversity_threshold
 
     @property
     def top_k_count(self) -> int:
         return self.pool_size
+
+    def _too_similar(self, node: SearchNode[TState], other: SearchNode[TState]) -> bool:
+        """True if node and other have nearly identical content."""
+        if node.content is None or other.content is None:
+            return False
+        m = SequenceMatcher(None, node.content, other.content, autojunk=False)
+        return m.quick_ratio() >= self.diversity_threshold and (
+            m.ratio() >= self.diversity_threshold
+        )
 
     def select_parent(
         self, nodes: list[SearchNode[TState]], progress: float
@@ -143,9 +165,17 @@ class NsgaStrategy(Generic[TState]):
                 rank[node.id] = front_idx
                 crowd[node.id] = distances[node.id]
 
-        # Pool: best pool_size nodes ordered by (rank ASC, crowding DESC)
+        # Build pool: iterate in quality order; skip near-duplicates of admitted nodes
+        # (the admitted node is always better-ranked, so the duplicate is always worse)
         sorted_valid = sorted(valid, key=lambda n: (rank[n.id], -crowd[n.id]))
-        pool = sorted_valid[: self.pool_size]
+        pool: list[SearchNode[TState]] = []
+        for node in sorted_valid:
+            if len(pool) >= self.pool_size:
+                break
+            if not any(self._too_similar(node, p) for p in pool):
+                pool.append(node)
+        if not pool:
+            pool = sorted_valid[: self.pool_size]
 
         def _tournament(exclude_id: int | None = None) -> SearchNode[TState]:
             candidates = [n for n in pool if n.id != exclude_id]

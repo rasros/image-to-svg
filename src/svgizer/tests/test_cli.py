@@ -12,4 +12,4 @@ def test_parse_args(monkeypatch):
     assert args.image == "input.png"
     assert args.workers == 4
     assert args.max_accepts == 10
-    assert args.strategy == StrategyType.GENETIC.value
+    assert args.strategy == StrategyType.NSGA.value

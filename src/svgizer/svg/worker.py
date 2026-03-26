@@ -142,6 +142,7 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
                     ),
                     secondary_parent_id=task.secondary_parent_id,
                     complexity=complexity,
+                    content=svg,
                 )
             )
 

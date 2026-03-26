@@ -21,6 +21,7 @@ class SearchNode(Generic[TState]):
     state: ChainState[TState] = dataclasses.field(compare=False)
     secondary_parent_id: int | None = dataclasses.field(default=None, compare=False)
     complexity: float = dataclasses.field(default=0.0, compare=False)
+    content: str | None = dataclasses.field(default=None, compare=False)
 
 
 @dataclasses.dataclass
@@ -44,3 +45,4 @@ class Result(Generic[TResultPayload]):
     invalid_msg: str | None = None
     secondary_parent_id: int | None = None
     complexity: float = 0.0
+    content: str | None = None
