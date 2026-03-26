@@ -54,7 +54,6 @@ def main():
         output_svg_path=args.output,
         resume=args.resume,
         openai_image_long_side=args.image_long_side,
-        base_temp=args.temperature,
     )
 
     try:
@@ -63,9 +62,6 @@ def main():
             storage=storage,
             max_accepts=args.max_accepts,
             workers=args.workers,
-            base_model_temperature=args.temperature,
-            temp_step=args.temp_step,
-            cooling_rate=args.cooling_rate,
             image_long_side=args.image_long_side,
             max_wall_seconds=args.max_wall_seconds,
             log_level=args.log_level,

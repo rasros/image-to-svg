@@ -18,8 +18,6 @@ def dummy_state() -> ChainState:
     )
     return ChainState(
         score=0.123456,
-        model_temperature=0.6,
-        stale_hits=0,
         payload=payload,
     )
 
@@ -72,11 +70,10 @@ def test_save_node_and_lineage(tmp_path, dummy_node):
             "parent",
             "secondary_parent",
             "score",
-            "temp",
             "summary",
         ]
         assert reader[1][0] == "42"
-        assert reader[1][5] == "Fixed circle"
+        assert reader[1][4] == "Fixed circle"
 
 
 def test_load_resume_nodes(tmp_path):

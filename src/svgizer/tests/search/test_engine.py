@@ -25,8 +25,6 @@ class FakeStrategy:
         _ = parent_state
         return ChainState(
             score=result.score,
-            model_temperature=0.6,
-            stale_hits=0,
             payload="new_fake_payload",
         )
 
@@ -64,7 +62,6 @@ def test_engine_run_loop_terminates_on_max_accepts():
         worker_slot=0,
         valid=True,
         score=0.1,
-        used_temperature=0.6,
         payload="fake_payload",
     )
     engine.result_q.put(res)
@@ -73,7 +70,7 @@ def test_engine_run_loop_terminates_on_max_accepts():
         score=0.8,
         id=1,
         parent_id=0,
-        state=ChainState(score=0.8, model_temperature=0.6, stale_hits=0, payload=None),
+        state=ChainState(score=0.8, payload=None),
     )
 
     engine.run(
@@ -104,7 +101,7 @@ def test_engine_respects_max_wall_seconds(monkeypatch):
         score=0.5,
         id=1,
         parent_id=0,
-        state=ChainState(score=0.5, model_temperature=1.0, stale_hits=0, payload=None),
+        state=ChainState(score=0.5, payload=None),
     )
 
     engine.run(initial_nodes=[dummy_node], max_accepts=10, max_wall_seconds=50.0)
@@ -119,7 +116,7 @@ def test_engine_respects_max_total_tasks():
         score=0.5,
         id=1,
         parent_id=0,
-        state=ChainState(score=0.5, model_temperature=1.0, stale_hits=0, payload=None),
+        state=ChainState(score=0.5, payload=None),
     )
 
     engine.run(initial_nodes=[dummy_node], max_accepts=10, max_wall_seconds=None)

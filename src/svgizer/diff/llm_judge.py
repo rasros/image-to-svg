@@ -59,7 +59,7 @@ class LLMJudgeScorer(DiffScorer):
     ):
         self.provider_name = provider_name
         self.config = config or LLMConfig(
-            model="gpt-5.4",
+            model="gpt-5.4-chat",
             temperature=0.0,
             response_schema=JUDGE_SCHEMA,
             schema_name="similarity_score",

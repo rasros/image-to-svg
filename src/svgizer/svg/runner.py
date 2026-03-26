@@ -21,7 +21,7 @@ from svgizer.search import (
     StorageAdapter,
     StrategyType,
 )
-from svgizer.svg.adapter import SvgStatePayload, SvgStrategyAdapter, make_is_svg_stale
+from svgizer.svg.adapter import SvgStatePayload, SvgStrategyAdapter
 from svgizer.svg.worker import worker_loop
 from svgizer.utils import setup_logger
 
@@ -33,9 +33,6 @@ def run_svg_search(
     storage: StorageAdapter,
     max_accepts: int,
     workers: int,
-    base_model_temperature: float,
-    temp_step: float,
-    cooling_rate: float,
     image_long_side: int,
     max_wall_seconds: float | None,
     log_level: str,
@@ -82,8 +79,6 @@ def run_svg_search(
                     parent_id=0,
                     state=ChainState(
                         score=new_score,
-                        model_temperature=base_model_temperature,
-                        stale_hits=0,
                         payload=SvgStatePayload(
                             svg=svg_text,
                             raster_data_url=None,
@@ -110,8 +105,6 @@ def run_svg_search(
                 parent_id=0,
                 state=ChainState(
                     INVALID_SCORE,
-                    base_model_temperature,
-                    0,
                     SvgStatePayload(None, None, None, None, None),
                 ),
             )
@@ -119,15 +112,9 @@ def run_svg_search(
 
     # 6. Search Execution Setup
     if strategy_type == StrategyType.GREEDY:
-        base_strategy = GreedyHillClimbingStrategy[SvgStatePayload](
-            cooling_rate=cooling_rate
-        )
+        base_strategy = GreedyHillClimbingStrategy[SvgStatePayload]()
     else:
-        base_strategy = GeneticPoolStrategy[SvgStatePayload](
-            top_k=3,
-            is_stale_fn=make_is_svg_stale(0.995),
-            cooling_rate=cooling_rate,
-        )
+        base_strategy = GeneticPoolStrategy[SvgStatePayload](top_k=3)
 
     strategy = SvgStrategyAdapter(base_strategy, image_long_side, write_lineage)
     engine = MultiprocessSearchEngine(
@@ -150,10 +137,7 @@ def run_svg_search(
         "llm_model": llm_model,
         "reasoning": reasoning,
         "api_key": os.getenv(api_key_env_var),
-        "base_temperature": base_model_temperature,
         "total_workers": workers,
-        "worker_max_temp": 1.6,
-        "worker_temp_step": temp_step,
     }
 
     engine.start_workers(worker_loop, worker_params)

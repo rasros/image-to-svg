@@ -23,7 +23,6 @@ def test_llm_client_structured_output():
         model="gpt-5.4-nano",
         response_schema=test_schema,
         schema_name="magic_number_test",
-        temperature=0.0,
     )
 
     content_blocks = [

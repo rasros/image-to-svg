@@ -23,7 +23,7 @@ class SearchStrategy(Protocol[TState]):
     def create_new_state(
         self, parent_state: ChainState[TState], result: Result[TState]
     ) -> ChainState[TState]:
-        """Handles temperature bumping, staleness, and state transition."""
+        """Handles state transition."""
         ...
 
     @property

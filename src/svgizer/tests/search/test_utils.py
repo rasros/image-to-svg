@@ -16,9 +16,7 @@ def test_calculate_elite_prob_clamping():
 
 
 def test_choose_from_top_k_weighted_distribution():
-    dummy_state = ChainState(
-        score=0.0, model_temperature=0.0, stale_hits=0, payload=None
-    )
+    dummy_state = ChainState(score=0.0, payload=None)
     nodes = [
         SearchNode(score=0.1, id=10, parent_id=0, state=dummy_state),
         SearchNode(score=0.2, id=20, parent_id=0, state=dummy_state),
@@ -33,9 +31,7 @@ def test_choose_from_top_k_weighted_distribution():
 
 
 def test_choose_from_top_k_weighted_single_node():
-    dummy_state = ChainState(
-        score=0.0, model_temperature=0.0, stale_hits=0, payload=None
-    )
+    dummy_state = ChainState(score=0.0, payload=None)
     nodes = [SearchNode(score=0.1, id=42, parent_id=0, state=dummy_state)]
     assert choose_from_top_k_weighted(nodes) == 42
 

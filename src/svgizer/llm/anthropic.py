@@ -40,7 +40,7 @@ class AnthropicProvider(LLMProvider):
         kwargs: dict[str, Any] = {
             "model": config.model,
             "max_tokens": 8192,
-            "temperature": config.temperature or 0.6,
+            "temperature": config.temperature or 1.0,
             "messages": [{"role": "user", "content": messages_content}],
         }
 

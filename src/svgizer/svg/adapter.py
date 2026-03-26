@@ -1,6 +1,4 @@
 import dataclasses
-import difflib
-from collections.abc import Callable
 
 from svgizer.image_utils import make_preview_data_url, png_bytes_to_data_url
 from svgizer.search import ChainState, Result, SearchNode, SearchStrategy
@@ -20,25 +18,6 @@ class SvgResultPayload:
     svg: str | None
     raster_png: bytes | None
     change_summary: str | None
-
-
-def make_is_svg_stale(
-    threshold: float = 0.995,
-) -> Callable[[SvgStatePayload, SvgResultPayload], bool]:
-    def is_svg_stale(
-        prev_payload: SvgStatePayload, new_payload: SvgResultPayload
-    ) -> bool:
-        if prev_payload is None or prev_payload.svg is None:
-            return False
-        if new_payload.svg is None:
-            return True
-        if prev_payload.svg == new_payload.svg:
-            return True
-
-        ratio = difflib.SequenceMatcher(None, prev_payload.svg, new_payload.svg).ratio()
-        return ratio >= threshold
-
-    return is_svg_stale
 
 
 class SvgStrategyAdapter:

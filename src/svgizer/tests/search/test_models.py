@@ -3,9 +3,7 @@ from svgizer.search.models import INVALID_SCORE, ChainState, SearchNode
 
 
 def test_search_node_sorting_by_score():
-    dummy_state = ChainState(
-        score=0.0, model_temperature=0.0, stale_hits=0, payload=None
-    )
+    dummy_state = ChainState(score=0.0, payload=None)
     n_best = SearchNode(score=0.1, id=10, parent_id=0, state=dummy_state)
     n_mid = SearchNode(score=0.5, id=5, parent_id=0, state=dummy_state)
     n_worst = SearchNode(score=0.9, id=1, parent_id=0, state=dummy_state)
@@ -19,9 +17,7 @@ def test_search_node_sorting_by_score():
 
 
 def test_search_node_comparison_ignores_metadata():
-    dummy_state = ChainState(
-        score=0.0, model_temperature=0.0, stale_hits=0, payload=None
-    )
+    dummy_state = ChainState(score=0.0, payload=None)
     n1 = SearchNode(score=0.2, id=99, parent_id=99, state=dummy_state)
     n2 = SearchNode(score=0.8, id=1, parent_id=1, state=dummy_state)
 
@@ -29,9 +25,7 @@ def test_search_node_comparison_ignores_metadata():
 
 
 def test_search_node_equality_with_identical_scores():
-    dummy_state = ChainState(
-        score=0.0, model_temperature=0.0, stale_hits=0, payload=None
-    )
+    dummy_state = ChainState(score=0.0, payload=None)
     n1 = SearchNode(score=0.5, id=1, parent_id=0, state=dummy_state)
     n2 = SearchNode(score=0.5, id=2, parent_id=0, state=dummy_state)
 

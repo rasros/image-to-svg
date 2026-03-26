@@ -145,11 +145,7 @@ class MultiprocessSearchEngine(Generic[TState]):
                 else:
                     status = "ACCEPTED"
 
-                log.info(
-                    f"[{status}] node={new_node.id} "
-                    f"score={new_node.score:.6f} "
-                    f"temp={new_node.state.model_temperature:.3f}"
-                )
+                log.info(f"[{status}] node={new_node.id} score={new_node.score:.6f} ")
                 self.storage.save_node(new_node)
 
         finally:

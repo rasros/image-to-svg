@@ -38,8 +38,6 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
         ).convert("RGB")
         scoring_ref = scorer.prepare_reference(original_rgb)
 
-        worker_max_temp = worker_params.get("worker_max_temp", 1.6)
-
     except Exception as e:
         log.critical(f"Worker failed initialization: {e!r}")
         return
@@ -51,22 +49,9 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
 
         parent = task.parent_state
 
-        worker_temp_step = worker_params.get("worker_temp_step", 0.25)
-        total_workers = worker_params.get("total_workers", 1)
-
-        slot_offset = task.worker_slot - ((total_workers - 1) / 2.0)
-
-        temp = min(
-            worker_max_temp,
-            max(0.0, parent.model_temperature + (slot_offset * worker_temp_step)),
-        )
-
         try:
             if task.secondary_parent_state:
-                crossover_temp = 0.2
-                config = LLMConfig(
-                    model=model_name, temperature=crossover_temp, reasoning=reasoning
-                )
+                config = LLMConfig(model=model_name, reasoning=reasoning)
                 prompt = build_crossover_prompt(
                     worker_params["image_data_url"],
                     parent.payload.svg,
@@ -83,17 +68,13 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
                 change_summary = worker_params.get("goal")
 
                 if parent.payload.svg:
-                    # Summary generation runs rigidly at base temp
-                    sum_temp = worker_params.get("base_temperature", 1.0)
                     sum_prompt = build_summarize_prompt(
                         worker_params["image_data_url"],
                         parent_preview,
                         custom_goal=worker_params.get("goal"),
                         previous_summary=parent.payload.change_summary,
                     )
-                    sum_config = LLMConfig(
-                        model=model_name, temperature=sum_temp, reasoning=reasoning
-                    )
+                    sum_config = LLMConfig(model=model_name, reasoning=reasoning)
                     change_summary = client.generate(sum_prompt, sum_config)
 
                 diff_data_url = None
@@ -118,9 +99,7 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
                         worker_params.get("image_long_side", 512),
                     )
 
-                gen_config = LLMConfig(
-                    model=model_name, temperature=temp, reasoning=reasoning
-                )
+                gen_config = LLMConfig(model=model_name, reasoning=reasoning)
                 gen_prompt = build_svg_gen_prompt(
                     worker_params["image_data_url"],
                     task.parent_id,
@@ -152,7 +131,6 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
                     worker_slot=task.worker_slot,
                     valid=True,
                     score=score,
-                    used_temperature=temp,
                     payload=SvgResultPayload(
                         svg=svg, raster_png=png, change_summary=change_summary
                     ),
@@ -169,7 +147,6 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
                     worker_slot=task.worker_slot,
                     valid=False,
                     score=INVALID_SCORE,
-                    used_temperature=temp,
                     payload=SvgResultPayload(None, None, None),
                     invalid_msg=repr(e),
                     secondary_parent_id=task.secondary_parent_id,

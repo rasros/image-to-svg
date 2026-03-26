@@ -18,7 +18,6 @@ def test_run_svg_search_end_to_end(tmp_path):
         output_svg_path=str(out_svg_path),
         resume=False,
         openai_image_long_side=64,
-        base_temp=0.0,
     )
 
     run_svg_search(
@@ -26,9 +25,6 @@ def test_run_svg_search_end_to_end(tmp_path):
         storage=storage,
         max_accepts=1,
         workers=1,
-        base_model_temperature=0.0,
-        temp_step=0.2,
-        cooling_rate=0.9,
         image_long_side=64,
         max_wall_seconds=None,
         log_level="DEBUG",
@@ -41,14 +37,12 @@ def test_run_svg_search_end_to_end(tmp_path):
         write_lineage=False,
     )
 
-    # Since save_final_svg is removed, we check the nodes directory
     assert storage.nodes_dir is not None, "Nodes directory was not initialized."
     assert storage.nodes_dir.is_dir(), "Nodes directory does not exist."
 
     svg_files = list(storage.nodes_dir.glob("*.svg"))
     assert len(svg_files) > 0, "No SVG files were saved to the nodes directory."
 
-    # Verify the contents of the latest generated SVG
     with svg_files[-1].open(encoding="utf-8") as f:
         content = f.read().lower()
         assert "<svg" in content, "Output does not contain valid SVG syntax."

@@ -5,15 +5,11 @@ from svgizer.search import ChainState, GreedyHillClimbingStrategy, Result, Searc
 
 @pytest.fixture
 def strategy():
-    return GreedyHillClimbingStrategy(
-        patience=2, temp_step=0.5, max_temp=2.0, cooling_rate=0.9
-    )
+    return GreedyHillClimbingStrategy()
 
 
 def test_select_parent_always_picks_best(strategy):
-    dummy_state = ChainState(
-        score=0.0, model_temperature=0.0, stale_hits=0, payload=None
-    )
+    dummy_state = ChainState(score=0.0, payload=None)
     nodes = [
         SearchNode(score=0.8, id=1, parent_id=0, state=dummy_state),
         SearchNode(score=0.2, id=2, parent_id=0, state=dummy_state),
@@ -23,38 +19,16 @@ def test_select_parent_always_picks_best(strategy):
     assert selected_id == 2
 
 
-def test_create_new_state_cools_on_improvement(strategy):
-    parent_state = ChainState(
-        score=0.5, model_temperature=0.5, stale_hits=1, payload="old"
-    )
+def test_create_new_state_applies_score(strategy):
+    parent_state = ChainState(score=0.5, payload="old")
     res = Result(
         task_id=1,
         parent_id=1,
         worker_slot=0,
         valid=True,
         score=0.4,
-        used_temperature=0.5,
         payload="new",
     )
     new_state = strategy.create_new_state(parent_state, res)
-    assert new_state.stale_hits == 0
-    # 0.5 * 0.9 = 0.45
-    assert new_state.model_temperature == pytest.approx(0.45)
-
-
-def test_create_new_state_bumps_temp_on_patience_reached(strategy):
-    parent_state = ChainState(
-        score=0.5, model_temperature=0.5, stale_hits=1, payload="old"
-    )
-    res = Result(
-        task_id=1,
-        parent_id=1,
-        worker_slot=0,
-        valid=True,
-        score=0.6,
-        used_temperature=0.5,
-        payload="new",
-    )
-    new_state = strategy.create_new_state(parent_state, res)
-    assert new_state.stale_hits == 0
-    assert new_state.model_temperature == pytest.approx(1.0)
+    assert new_state.score == 0.4
+    assert new_state.payload == "new"

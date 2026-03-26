@@ -20,13 +20,11 @@ class FileStorageAdapter:
         resume: bool = False,
         img_dims: tuple[int, int] = (512, 512),
         openai_image_long_side: int = 512,
-        base_temp: float = 1.0,
     ):
         self.output_svg_path = Path(output_svg_path)
         self.resume = resume
         self.img_dims = img_dims
         self.openai_image_long_side = openai_image_long_side
-        self.base_temp = base_temp
         self._max_id = 0
 
         self.base_name = self.output_svg_path.stem
@@ -156,7 +154,7 @@ class FileStorageAdapter:
             writer = csv.writer(f)
             if not exists:
                 writer.writerow(
-                    ["id", "parent", "secondary_parent", "score", "temp", "summary"]
+                    ["id", "parent", "secondary_parent", "score", "summary"]
                 )
             writer.writerow(
                 [
@@ -164,7 +162,6 @@ class FileStorageAdapter:
                     node.parent_id,
                     node.secondary_parent_id or "",
                     f"{node.score:.6f}",
-                    f"{node.state.model_temperature:.3f}",
                     node.state.payload.change_summary or "",
                 ]
             )

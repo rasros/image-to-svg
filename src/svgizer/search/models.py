@@ -10,8 +10,6 @@ TResultPayload = TypeVar("TResultPayload")
 @dataclasses.dataclass
 class ChainState(Generic[TState]):
     score: float
-    model_temperature: float
-    stale_hits: int
     payload: TState
 
 
@@ -41,7 +39,6 @@ class Result(Generic[TResultPayload]):
     worker_slot: int
     valid: bool
     score: float
-    used_temperature: float
     payload: TResultPayload
     invalid_msg: str | None = None
     secondary_parent_id: int | None = None
