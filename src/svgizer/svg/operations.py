@@ -10,10 +10,16 @@ Use `with_retries` to wrap any operation for automatic retry on invalid output:
 """
 
 import copy
+import io
 import random
 import re
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
+
+from PIL import Image
+
+from svgizer.image_utils import rasterize_svg_to_png_bytes
+from svgizer.score.utils import lab_l1
 
 SVG_NS = "http://www.w3.org/2000/svg"
 
@@ -72,14 +78,58 @@ def with_retries(
     return fallback
 
 
+def with_micro_search(
+    op_generator: Callable[[], tuple[str, str]],
+    fallback_svg: str,
+    orig_img_fast: Image.Image,
+    num_trials: int = 15,
+    default_summary: str = "No improvement",
+) -> tuple[str, str]:
+    """
+    Executes op_generator() multiple times and evaluates each valid SVG result
+    using a fast low-resolution LAB L1 pixel difference against orig_img_fast.
+    Returns the (svg, summary) that achieved the best visual score.
+    """
+    best_svg = fallback_svg
+    best_fast_score = float("inf")
+    best_summary = default_summary
+    fast_w, fast_h = orig_img_fast.size
+
+    # 1. Evaluate fallback's baseline fast score
+    try:
+        parent_png = rasterize_svg_to_png_bytes(
+            fallback_svg, out_w=fast_w, out_h=fast_h
+        )
+        parent_img = Image.open(io.BytesIO(parent_png)).convert("RGB")
+        best_fast_score = lab_l1(orig_img_fast, parent_img)
+    except Exception:
+        pass
+
+    # 2. Try N rapid mutations/crossovers
+    for _ in range(num_trials):
+        cand_svg, summary = op_generator()
+        if cand_svg == fallback_svg:
+            continue
+
+        try:
+            cand_png = rasterize_svg_to_png_bytes(cand_svg, out_w=fast_w, out_h=fast_h)
+            cand_img = Image.open(io.BytesIO(cand_png)).convert("RGB")
+            score = lab_l1(orig_img_fast, cand_img)
+
+            if score < best_fast_score:
+                best_fast_score = score
+                best_svg = cand_svg
+                best_summary = summary
+        except Exception:
+            continue
+
+    return best_svg, best_summary
+
+
 def crossover(svg_a: str, svg_b: str, k: int = 2) -> str:
     """
     K-point crossover: split top-level children into k+1 contiguous segments,
     alternating which parent contributes each segment.
-
-    Contiguous blocks preserve more intra-group structure than per-element
-    coin flips (the previous behaviour), which helps the child inherit coherent
-    sub-trees from each parent.
     """
     try:
         root_a = ET.fromstring(svg_a)
@@ -100,7 +150,6 @@ def crossover(svg_a: str, svg_b: str, k: int = 2) -> str:
 
         actual_k = min(k, max_len - 1)
         cuts = sorted(random.sample(range(1, max_len), actual_k))
-        # Segments: [0, cuts[0]), [cuts[0], cuts[1]), ..., [cuts[-1], max_len)
 
         segment = 0
         use_a = True
@@ -198,3 +247,55 @@ def mutate_numeric(svg: str) -> str:
         return ET.tostring(root, encoding="unicode", method="xml")
     except ET.ParseError:
         return svg
+
+
+def crossover_with_micro_search(
+    svg_a: str,
+    svg_b: str,
+    orig_img_fast: Image.Image,
+    num_trials: int = 15,
+) -> tuple[str, str]:
+    """Applies crossover repeatedly and keeps the best structural result."""
+
+    def _op():
+        cand = with_retries(lambda: crossover(svg_a, svg_b), fallback=svg_a)
+        return cand, "Local crossover"
+
+    return with_micro_search(
+        _op,
+        fallback_svg=svg_a,
+        orig_img_fast=orig_img_fast,
+        num_trials=num_trials,
+        default_summary="Crossover: no improvement",
+    )
+
+
+def mutate_with_micro_search(
+    parent_svg: str,
+    orig_img_fast: Image.Image,
+    num_trials: int = 15,
+) -> tuple[str, str]:
+    """Applies random mutations repeatedly and keeps the best structural result."""
+
+    def _op():
+        roll = random.random()
+        if roll < 0.33:
+            cand = with_retries(
+                lambda: mutate_remove_node(parent_svg), fallback=parent_svg
+            )
+            return cand, "Mutation: removed node"
+        if roll < 0.66:
+            cand = with_retries(lambda: mutate_numeric(parent_svg), fallback=parent_svg)
+            return cand, "Mutation: tweaked value"
+        cand = with_retries(
+            lambda: mutate_drop_style_property(parent_svg), fallback=parent_svg
+        )
+        return cand, "Mutation: dropped style property"
+
+    return with_micro_search(
+        _op,
+        fallback_svg=parent_svg,
+        orig_img_fast=orig_img_fast,
+        num_trials=num_trials,
+        default_summary="Mutation: no improvement",
+    )

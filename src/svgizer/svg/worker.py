@@ -13,15 +13,11 @@ from svgizer.image_utils import (
 )
 from svgizer.llm import LLMConfig, get_provider
 from svgizer.score.complexity import svg_complexity
-from svgizer.score.utils import lab_l1
 from svgizer.search import INVALID_SCORE, Result
 from svgizer.svg.adapter import SvgResultPayload
 from svgizer.svg.operations import (
-    crossover,
-    mutate_drop_style_property,
-    mutate_numeric,
-    mutate_remove_node,
-    with_retries,
+    crossover_with_micro_search,
+    mutate_with_micro_search,
 )
 from svgizer.svg.prompts import (
     build_summarize_prompt,
@@ -56,7 +52,6 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
         )
         fast_eval_side = 128
         orig_img_fast = resize_long_side(orig_img, fast_eval_side)
-        fast_w, fast_h = orig_img_fast.size
 
     except Exception as e:
         log.critical(f"Worker failed initialization: {e!r}")
@@ -74,11 +69,12 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
         try:
             if task.secondary_parent_state and task.secondary_parent_state.payload.svg:
                 secondary_svg = task.secondary_parent_state.payload.svg
-                svg = with_retries(
-                    lambda a=parent.payload.svg, b=secondary_svg: crossover(a, b),
-                    fallback=parent.payload.svg,
+                svg, change_summary = crossover_with_micro_search(
+                    svg_a=parent.payload.svg,
+                    svg_b=secondary_svg,
+                    orig_img_fast=orig_img_fast,
+                    num_trials=15,
                 )
-                change_summary = "Local crossover"
 
             elif use_llm:
                 # force_diverse: generate from scratch to seed a new lineage.
@@ -151,65 +147,11 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
                     svg = extract_svg_fragment(raw)
 
             else:
-                # Local mutation: Micro-search via fast CPU diff
-                parent_svg = parent.payload.svg
-                best_svg = parent_svg
-                best_fast_score = float("inf")
-                best_summary = "Mutation: no improvement"
-
-                # 1. Evaluate parent's baseline fast score
-                try:
-                    parent_png = rasterize_svg_to_png_bytes(
-                        parent_svg, out_w=fast_w, out_h=fast_h
-                    )
-                    parent_img = Image.open(io.BytesIO(parent_png)).convert("RGB")
-                    best_fast_score = lab_l1(orig_img_fast, parent_img)
-                except Exception:
-                    pass
-
-                # 2. Try N rapid mutations, keep the one that improves the L1 score the most
-                num_micro_mutations = 15
-
-                for _ in range(num_micro_mutations):
-                    roll = random.random()
-                    if roll < 0.33:
-                        cand_svg = with_retries(
-                            lambda s=parent_svg: mutate_remove_node(s),
-                            fallback=parent_svg,
-                        )
-                        summary = "Mutation: removed node"
-                    elif roll < 0.66:
-                        cand_svg = with_retries(
-                            lambda s=parent_svg: mutate_numeric(s),
-                            fallback=parent_svg,
-                        )
-                        summary = "Mutation: tweaked value"
-                    else:
-                        cand_svg = with_retries(
-                            lambda s=parent_svg: mutate_drop_style_property(s),
-                            fallback=parent_svg,
-                        )
-                        summary = "Mutation: dropped style property"
-
-                    if cand_svg == parent_svg:
-                        continue
-
-                    try:
-                        cand_png = rasterize_svg_to_png_bytes(
-                            cand_svg, out_w=fast_w, out_h=fast_h
-                        )
-                        cand_img = Image.open(io.BytesIO(cand_png)).convert("RGB")
-                        score = lab_l1(orig_img_fast, cand_img)
-
-                        if score < best_fast_score:
-                            best_fast_score = score
-                            best_svg = cand_svg
-                            best_summary = summary
-                    except Exception:
-                        continue
-
-                svg = best_svg
-                change_summary = best_summary
+                svg, change_summary = mutate_with_micro_search(
+                    parent_svg=parent.payload.svg,
+                    orig_img_fast=orig_img_fast,
+                    num_trials=15,
+                )
 
             valid, err = is_valid_svg(svg)
             if not valid:

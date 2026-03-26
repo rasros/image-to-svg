@@ -1,11 +1,16 @@
 import xml.etree.ElementTree as ET
 
 import pytest
+from PIL import Image
 
 from svgizer.svg.operations import (
     crossover,
+    crossover_with_micro_search,
+    mutate_drop_style_property,
     mutate_numeric,
     mutate_remove_node,
+    mutate_with_micro_search,
+    with_micro_search,
     with_retries,
 )
 
@@ -156,7 +161,9 @@ def test_mutate_numeric_no_numeric_attrs_unchanged():
     assert ET.fromstring(result).tag.endswith("svg")
 
 
-@pytest.mark.parametrize("op", [mutate_remove_node, mutate_numeric])
+@pytest.mark.parametrize(
+    "op", [mutate_remove_node, mutate_numeric, mutate_drop_style_property]
+)
 def test_mutation_result_is_string(op):
     assert isinstance(op(SVG_ONE), str)
 
@@ -209,3 +216,84 @@ def test_with_retries_exhausts_all_attempts():
 
     with_retries(always_bad, fallback=FALLBACK, max_retries=4)
     assert len(calls) == 4
+
+
+# ---------------------------------------------------------------------------
+# with_micro_search
+# ---------------------------------------------------------------------------
+
+
+def test_with_micro_search_finds_improvement():
+    # Target image is blue
+    target_img = Image.new("RGB", (10, 10), color="blue")
+    fallback_svg = f'<svg xmlns="{NS}"><rect width="10" height="10" fill="red"/></svg>'
+    better_svg = f'<svg xmlns="{NS}"><rect width="10" height="10" fill="blue"/></svg>'
+
+    yields = [(fallback_svg, "bad"), (better_svg, "good")]
+
+    def op_gen():
+        return yields.pop(0)
+
+    best_svg, summary = with_micro_search(
+        op_gen, fallback_svg, target_img, num_trials=2, default_summary="none"
+    )
+    assert best_svg == better_svg
+    assert summary == "good"
+
+
+def test_with_micro_search_no_improvement_returns_fallback():
+    # Target image is blue, fallback is already perfect
+    target_img = Image.new("RGB", (10, 10), color="blue")
+    fallback_svg = f'<svg xmlns="{NS}"><rect width="10" height="10" fill="blue"/></svg>'
+    worse_svg = f'<svg xmlns="{NS}"><rect width="10" height="10" fill="red"/></svg>'
+
+    def op_gen():
+        return worse_svg, "worse"
+
+    best_svg, summary = with_micro_search(
+        op_gen, fallback_svg, target_img, num_trials=2, default_summary="No improvement"
+    )
+    assert best_svg == fallback_svg
+    assert summary == "No improvement"
+
+
+def test_with_micro_search_ignores_invalid_renders():
+    target_img = Image.new("RGB", (10, 10), color="blue")
+    fallback_svg = f'<svg xmlns="{NS}"><rect width="10" height="10" fill="red"/></svg>'
+    invalid_svg = "not an svg"
+
+    def op_gen():
+        return invalid_svg, "invalid"
+
+    best_svg, summary = with_micro_search(
+        op_gen, fallback_svg, target_img, num_trials=1, default_summary="none"
+    )
+    # The invalid SVG should throw inside the rasterizer, be caught, and ignored
+    assert best_svg == fallback_svg
+    assert summary == "none"
+
+
+# ---------------------------------------------------------------------------
+# High-level Micro Search Wrappers
+# ---------------------------------------------------------------------------
+
+
+def test_crossover_with_micro_search():
+    target_img = Image.new("RGB", (10, 10), color="blue")
+    svg_a = f'<svg xmlns="{NS}"><rect width="10" height="10" fill="red"/></svg>'
+    svg_b = f'<svg xmlns="{NS}"><rect width="10" height="10" fill="blue"/></svg>'
+
+    res, summary = crossover_with_micro_search(svg_a, svg_b, target_img, num_trials=2)
+    assert isinstance(res, str)
+    assert "<svg" in res
+    assert "crossover" in summary.lower()
+
+
+def test_mutate_with_micro_search():
+    target_img = Image.new("RGB", (10, 10), color="blue")
+    svg_a = f'<svg xmlns="{NS}"><rect width="10" height="10" fill="red"/></svg>'
+
+    res, summary = mutate_with_micro_search(svg_a, target_img, num_trials=2)
+    assert isinstance(res, str)
+    assert "<svg" in res
+    assert "mutation" in summary.lower()

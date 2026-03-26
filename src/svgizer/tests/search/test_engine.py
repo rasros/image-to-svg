@@ -40,6 +40,7 @@ class FakeStorage:
         pass
 
     def load_resume_nodes(self, max_nodes: int = 20) -> list:
+        _ = max_nodes
         return []
 
     def save_node(self, node: SearchNode) -> None:

@@ -75,9 +75,7 @@ class FileStorageAdapter:
             log.warning(f"Latest run {latest_run.name} has no 'nodes' directory.")
             return []
 
-        log.info(
-            f"Resuming top {max_nodes} nodes from latest run: {latest_run.name}"
-        )
+        log.info(f"Resuming top {max_nodes} nodes from latest run: {latest_run.name}")
 
         file_pattern = re.compile(r"score([0-9.]+)_node(\d+)")
         parsed_files = []
