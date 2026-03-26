@@ -40,10 +40,8 @@ class SvgStrategyAdapter:
     ) -> tuple[int, int | None]:
         return self.base_strategy.select_parent(nodes, progress)
 
-    def create_new_state(
-        self, parent_state: ChainState[SvgStatePayload], result: Result
-    ) -> ChainState[SvgStatePayload]:
-        new_state = self.base_strategy.create_new_state(parent_state, result)
+    def create_new_state(self, result: Result) -> ChainState[SvgStatePayload]:
+        new_state = self.base_strategy.create_new_state(result)
         result_payload: SvgResultPayload = result.payload
 
         raster_data_url = None

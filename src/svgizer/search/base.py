@@ -20,9 +20,7 @@ class SearchStrategy(Protocol[TState]):
         """Decides which node(s) to mutate or crossover next."""
         ...
 
-    def create_new_state(
-        self, parent_state: ChainState[TState], result: Result[TState]
-    ) -> ChainState[TState]:
+    def create_new_state(self, result: Result[TState]) -> ChainState[TState]:
         """Handles state transition."""
         ...
 

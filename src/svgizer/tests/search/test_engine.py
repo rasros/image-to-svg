@@ -19,10 +19,8 @@ class FakeStrategy:
 
     def create_new_state(
         self,
-        parent_state: ChainState,
         result: Result,
     ) -> ChainState:
-        _ = parent_state
         return ChainState(
             score=result.score,
             payload="new_fake_payload",

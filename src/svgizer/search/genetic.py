@@ -43,9 +43,7 @@ class GeneticPoolStrategy(Generic[TState]):
             return choose_from_top_k_weighted(best_k), None
         return best_node.id, None
 
-    def create_new_state(
-        self, parent_state: ChainState[TState], result: Result
-    ) -> ChainState[TState]:
+    def create_new_state(self, result: Result) -> ChainState[TState]:
         return ChainState(
             score=result.score,
             payload=result.payload,

@@ -20,9 +20,7 @@ class GreedyHillClimbingStrategy(Generic[TState]):
         best_node = min(nodes, key=lambda n: n.score)
         return best_node.id, None
 
-    def create_new_state(
-        self, parent_state: ChainState[TState], result: Result
-    ) -> ChainState[TState]:
+    def create_new_state(self, result: Result) -> ChainState[TState]:
         return ChainState(
             score=result.score,
             payload=result.payload,

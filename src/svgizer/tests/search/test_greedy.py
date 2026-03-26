@@ -20,7 +20,6 @@ def test_select_parent_always_picks_best(strategy):
 
 
 def test_create_new_state_applies_score(strategy):
-    parent_state = ChainState(score=0.5, payload="old")
     res = Result(
         task_id=1,
         parent_id=1,
@@ -29,6 +28,6 @@ def test_create_new_state_applies_score(strategy):
         score=0.4,
         payload="new",
     )
-    new_state = strategy.create_new_state(parent_state, res)
+    new_state = strategy.create_new_state(res)
     assert new_state.score == 0.4
     assert new_state.payload == "new"

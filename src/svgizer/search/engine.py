@@ -123,9 +123,7 @@ class MultiprocessSearchEngine(Generic[TState]):
                     continue
 
                 next_node_id += 1
-                new_state = self.strategy.create_new_state(
-                    node_states[res.parent_id], res
-                )
+                new_state = self.strategy.create_new_state(res)
 
                 new_node = SearchNode(
                     score=res.score,

@@ -21,11 +21,6 @@ def test_select_parent_returns_best_on_full_progress(strategy):
 
 
 def test_create_new_state_propagates_payload(strategy):
-    parent = ChainState(
-        score=0.5,
-        payload="identical_payload",
-    )
-
     res = Result(
         task_id=1,
         parent_id=1,
@@ -35,7 +30,7 @@ def test_create_new_state_propagates_payload(strategy):
         payload="new_identical_payload",
     )
 
-    new_state = strategy.create_new_state(parent, res)
+    new_state = strategy.create_new_state(res)
 
     assert new_state.score == 0.5
     assert new_state.payload == "new_identical_payload"
