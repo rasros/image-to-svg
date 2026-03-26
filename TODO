@@ -1,10 +1,5 @@
 tqdm on resume mode and improved performance
 
-pool diversity creates entirely new genome, on a mature run it will never be accepted.
-   we should do a custom prompt for it instead
-   pool_diversity can only run when use_llm is true (use_llm should be checked at top level for worker)
-   if it fails we should do exponential backoff
-
 rerun profile.json
 
 improved console output (something cool with new best, total processed etc)
