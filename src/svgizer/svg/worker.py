@@ -92,6 +92,9 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
                         previous_summary=parent.payload.change_summary,
                     )
                     sum_config = LLMConfig(model=model_name, reasoning=reasoning)
+                    log.info(
+                        f"LLM call [summarize] task={task.task_id} model={model_name}"
+                    )
                     change_summary = client.generate(sum_prompt, sum_config)
 
                 diff_data_url = None
@@ -123,6 +126,10 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
                     rasterized_svg_data_url=parent_preview if has_svg else None,
                     change_summary=change_summary,
                     diff_data_url=diff_data_url,
+                )
+                log.info(
+                    f"LLM call [generate] task={task.task_id} "
+                    f"parent={task.parent_id} model={model_name}"
                 )
                 raw = client.generate(gen_prompt, gen_config)
                 svg = extract_svg_fragment(raw)

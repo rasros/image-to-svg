@@ -45,10 +45,11 @@ def main():
 
     logging.basicConfig(level=getattr(logging, args.log_level.upper(), logging.INFO))
     logger = logging.getLogger("main")
-    logger.info(
-        f"Initialized LLM Backend -> Provider: {provider.upper()} "
-        f"| Model: {model} | Reasoning: {args.reasoning}"
-    )
+    logger.info("=== SVGizer parameters ===")
+    logger.info(f"  provider: {provider} | model: {model}")
+    for key, val in sorted(vars(args).items()):
+        logger.info(f"  {key}: {val}")
+    logger.info("==========================")
 
     storage = FileStorageAdapter(
         output_svg_path=args.output,
