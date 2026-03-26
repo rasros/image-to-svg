@@ -3,13 +3,15 @@
 Analyze a speedscope JSON profile (from py-spy) for CPU hotspots.
 
 Usage:
-    uv tool run py-spy record -f speedscope -o profile.json --subprocesses -- uv run svgizer ...
+    uv tool run py-spy record -f speedscope -o profile.json \\
+        --subprocesses -- uv run svgizer ...
     python scripts/analyze_profile.py profile.json
 """
 
 import json
 import sys
 from collections import Counter
+from pathlib import Path
 
 
 def shorten_path(path: str) -> str:
@@ -55,7 +57,7 @@ def top_frames(
 
 def main(path: str) -> None:
     print(f"Loading {path} ...")
-    with open(path) as f:
+    with Path(path).open() as f:
         data = json.load(f)
 
     shared_frames = data.get("shared", {}).get("frames", [])
@@ -82,10 +84,10 @@ def main(path: str) -> None:
         frames, total = top_frames(main_profile, shared_frames)
         print(f"=== Main thread: {total:.1f}s ===")
         print(f"  {'Count':>7}  {'%':>5}  Frame")
+        n_samples = max(1, len(main_profile["samples"]))
         for cnt, _, name, file_, line in frames:
-            print(
-                f"  {cnt:7d}  {100 * cnt / max(1, len(main_profile['samples'])):4.1f}%  {name}  [{file_}:{line}]"
-            )
+            pct = 100 * cnt / n_samples
+            print(f"  {cnt:7d}  {pct:4.1f}%  {name}  [{file_}:{line}]")
         print()
 
     # --- Workers aggregated ---
@@ -100,9 +102,8 @@ def main(path: str) -> None:
                 for fid in stack:
                     combined_counts[fid] += 1
 
-        print(
-            f"=== Workers ({len(worker_profiles)} threads): {total_worker_weight:.1f}s ==="
-        )
+        nw = len(worker_profiles)
+        print(f"=== Workers ({nw} threads): {total_worker_weight:.1f}s ===")
         print(f"  {'Count':>7}  {'%':>5}  Frame")
         for fid, cnt in combined_counts.most_common(25):
             if fid < len(shared_frames):
