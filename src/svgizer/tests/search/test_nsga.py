@@ -250,3 +250,66 @@ def test_pareto_front_prefers_simpler_for_equal_quality():
     }
     fronts = non_dominated_sort([n_simple, n_complex], objectives)
     assert fronts[0][0].id == 1
+
+
+# ---------------------------------------------------------------------------
+# Binary tournament
+# ---------------------------------------------------------------------------
+
+
+def test_tournament_prefers_lower_rank():
+    """Node on front 0 must consistently beat node on front 1 in tournament."""
+    strategy = NsgaStrategy(pool_size=10, crossover_prob=0.0)
+    # Node 1: better score (front 0), Node 2: worse score (front 1)
+    nodes = [make_node(1, 0.1, complexity=100.0), make_node(2, 0.9, complexity=100.0)]
+    selected = {strategy.select_parent(nodes, 0.0)[0] for _ in range(30)}
+    # Node 1 dominates node 2 — should always win the tournament
+    assert 1 in selected
+    assert 2 not in selected
+
+
+def test_tournament_single_pool_candidate_returns_it():
+    """When only one candidate exists in the pool the tournament still returns it."""
+    strategy = NsgaStrategy(pool_size=10, crossover_prob=0.0)
+    nodes = [make_node(1, 0.3, complexity=200.0)]
+    pid, secondary = strategy.select_parent(nodes, 0.0)
+    assert pid == 1
+    assert secondary is None
+
+
+def test_tournament_two_equal_rank_nodes_both_selectable():
+    """Two Pareto-equivalent nodes (incomparable) should both be selectable."""
+    strategy = NsgaStrategy(pool_size=10, crossover_prob=0.0)
+    # Incomparable: node 1 has better score, node 2 has lower complexity
+    nodes = [make_node(1, 0.1, complexity=500.0), make_node(2, 0.9, complexity=10.0)]
+    selected = {strategy.select_parent(nodes, 0.0)[0] for _ in range(50)}
+    assert 1 in selected
+    assert 2 in selected
+
+
+# ---------------------------------------------------------------------------
+# Pool size boundary
+# ---------------------------------------------------------------------------
+
+
+def test_pool_size_limits_candidate_set():
+    """With pool_size=2 and 5 nodes, only the top 2 (by rank) can be selected."""
+    strategy = NsgaStrategy(pool_size=2, crossover_prob=0.0)
+    # Nodes 1 and 2 dominate the rest (clearly better score AND complexity)
+    nodes = [
+        make_node(1, 0.1, complexity=10.0),
+        make_node(2, 0.2, complexity=20.0),
+        make_node(3, 0.8, complexity=800.0),
+        make_node(4, 0.9, complexity=900.0),
+        make_node(5, 1.0, complexity=1000.0),
+    ]
+    selected = {strategy.select_parent(nodes, 0.0)[0] for _ in range(50)}
+    assert selected <= {1, 2}, f"Nodes outside pool were selected: {selected - {1, 2}}"
+
+
+def test_pool_size_one_always_returns_same_node():
+    """pool_size=1 means the single best node is always chosen."""
+    strategy = NsgaStrategy(pool_size=1, crossover_prob=0.0)
+    nodes = [make_node(i, i * 0.1, complexity=float(i * 100)) for i in range(1, 6)]
+    selected = {strategy.select_parent(nodes, 0.0)[0] for _ in range(20)}
+    assert selected == {1}

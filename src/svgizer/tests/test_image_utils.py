@@ -1,3 +1,4 @@
+import base64
 import io
 from textwrap import dedent
 
@@ -6,14 +7,15 @@ from PIL import Image
 
 from svgizer.image_utils import (
     downscale_png_bytes,
+    generate_diff_data_url,
     png_bytes_to_data_url,
     rasterize_svg_to_png_bytes,
     resize_long_side,
 )
 
 
-def create_test_image(width: int, height: int) -> bytes:
-    img = Image.new("RGB", (width, height), color="red")
+def create_test_image(width: int, height: int, color="red") -> bytes:
+    img = Image.new("RGB", (width, height), color=color)
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return buf.getvalue()
@@ -77,3 +79,62 @@ def test_rasterize_svg_to_png_bytes_invalid_dimensions():
     svg = "<svg></svg>"
     with pytest.raises(ValueError, match="Invalid raster target size"):
         rasterize_svg_to_png_bytes(svg, out_w=-10, out_h=100)
+
+
+# ---------------------------------------------------------------------------
+# generate_diff_data_url
+# ---------------------------------------------------------------------------
+
+
+def test_diff_data_url_returns_data_url():
+    ref = create_test_image(64, 64, color="red")
+    cand = create_test_image(64, 64, color="blue")
+    result = generate_diff_data_url(ref, cand, long_side=64)
+    assert result.startswith("data:image/png;base64,")
+
+
+def test_diff_data_url_output_is_valid_png():
+    ref = create_test_image(64, 64, color="red")
+    cand = create_test_image(64, 64, color="blue")
+    result = generate_diff_data_url(ref, cand, long_side=64)
+    _, b64 = result.split(",", 1)
+    img = Image.open(io.BytesIO(base64.b64decode(b64)))
+    assert img.mode == "RGB"
+
+
+def test_diff_data_url_output_respects_long_side():
+    ref = create_test_image(200, 200, color="red")
+    cand = create_test_image(200, 200, color="blue")
+    result = generate_diff_data_url(ref, cand, long_side=64)
+    _, b64 = result.split(",", 1)
+    img = Image.open(io.BytesIO(base64.b64decode(b64)))
+    assert max(img.size) <= 64
+
+
+def test_diff_data_url_identical_images_are_black():
+    """Identical images produce a zero-difference map (all black)."""
+    ref = create_test_image(64, 64, color="red")
+    result = generate_diff_data_url(ref, ref, long_side=64)
+    _, b64 = result.split(",", 1)
+    img = Image.open(io.BytesIO(base64.b64decode(b64))).convert("RGB")
+    pixels = list(img.getdata())
+    assert all(p == (0, 0, 0) for p in pixels)
+
+
+def test_diff_data_url_different_images_are_nonzero():
+    """Different images produce a non-zero diff map."""
+    ref = create_test_image(64, 64, color="red")
+    cand = create_test_image(64, 64, color="blue")
+    result = generate_diff_data_url(ref, cand, long_side=64)
+    _, b64 = result.split(",", 1)
+    img = Image.open(io.BytesIO(base64.b64decode(b64))).convert("RGB")
+    pixels = list(img.getdata())
+    assert any(p != (0, 0, 0) for p in pixels)
+
+
+def test_diff_data_url_handles_size_mismatch():
+    """Candidate with different size is resized before diffing — no crash."""
+    ref = create_test_image(64, 64, color="red")
+    cand = create_test_image(128, 128, color="blue")
+    result = generate_diff_data_url(ref, cand, long_side=64)
+    assert result.startswith("data:image/png;base64,")
