@@ -13,8 +13,6 @@ from svgizer.search.models import Result, SearchNode, Task
 TState = TypeVar("TState")
 log = logging.getLogger(__name__)
 
-_DIVERSE_INTERVAL = 5
-
 
 class MultiprocessSearchEngine(Generic[TState]):
     def __init__(
@@ -109,7 +107,10 @@ class MultiprocessSearchEngine(Generic[TState]):
         accepted_count = 0
         in_flight = 0
 
-        tasks_since_diverse = _DIVERSE_INTERVAL
+        # Tracking for diversity exponential backoff
+        diverse_interval = 5
+        tasks_since_diverse = diverse_interval
+        diverse_task_ids = set()
 
         next_node_id = max(
             self.storage.max_node_id, max((n.id for n in initial_nodes), default=0)
@@ -151,14 +152,20 @@ class MultiprocessSearchEngine(Generic[TState]):
 
                     if next_task_id <= warmup_diverse:
                         force_diverse = True
-                    elif not is_warmup and tasks_since_diverse >= _DIVERSE_INTERVAL:
+                    elif not is_warmup and tasks_since_diverse >= diverse_interval:
                         force_diverse = self.strategy.should_diversify(active_pool)
                         if force_diverse:
-                            log.warning("Pool diversity low. Dispatching fresh seed.")
+                            log.warning(
+                                f"Pool diversity low. Dispatching fresh seed "
+                                f"(interval={diverse_interval})."
+                            )
 
                     tasks_since_diverse = (
                         0 if force_diverse else tasks_since_diverse + 1
                     )
+
+                    if force_diverse:
+                        diverse_task_ids.add(next_task_id)
 
                     self.task_q.put(
                         Task(
@@ -196,6 +203,10 @@ class MultiprocessSearchEngine(Generic[TState]):
                 no_improve_tasks += 1
 
                 if not res.valid:
+                    if res.task_id in diverse_task_ids:
+                        diverse_task_ids.discard(res.task_id)
+                        diverse_interval = min(diverse_interval * 2, 200)
+
                     if res.invalid_msg == "Duplicate genome":
                         log.debug(f"Task {res.task_id} rejected: duplicate genome.")
                     else:
@@ -230,6 +241,16 @@ class MultiprocessSearchEngine(Generic[TState]):
                         range(len(active_pool)), key=lambda i: active_pool[i].score
                     )
                     active_pool.pop(worst_idx)
+
+                if res.task_id in diverse_task_ids:
+                    diverse_task_ids.discard(res.task_id)
+                    if new_node in active_pool:
+                        # Success: reset backoff
+                        diverse_interval = 5
+                    else:
+                        # Failed to improve pool: backoff exponentially up to max
+                        diverse_interval = min(diverse_interval * 2, 200)
+
                 node_states[new_node.id] = new_state
                 accepted_count += 1
 

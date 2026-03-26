@@ -27,9 +27,11 @@ def build_svg_gen_prompt(
 
     if force_diverse:
         lines.append(
-            "DIVERSITY SEED: The search has converged. Ignore any prior SVG. "
-            "Produce a FRESH structural interpretation using completely different "
-            "primitives, geometry, or decomposition than you might otherwise attempt."
+            "DIVERSITY MUTATION: The current SVG approach has converged. You must "
+            "produce a RADICAL REFACTOR of the geometric structure. Preserve the "
+            "visual likeness to the target image, but use completely different "
+            "SVG primitives, grouping strategies, or coordinate mapping to "
+            "escape local minima."
         )
     elif svg_prev is None:
         lines.append("First attempt: Create a high-level structural blocking.")

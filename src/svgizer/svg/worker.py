@@ -64,7 +64,9 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
 
         parent = task.parent_state
         has_svg = bool(parent.payload.svg)
-        use_llm = task.force_llm or task.force_diverse or _use_llm(has_svg, llm_rate)
+
+        # Determine use_llm independently of force_diverse
+        use_llm = task.force_llm or _use_llm(has_svg, llm_rate)
 
         try:
             if task.secondary_parent_state and task.secondary_parent_state.payload.svg:
@@ -78,12 +80,21 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
 
             elif use_llm:
                 if task.force_diverse:
-                    change_summary = "Diversity seed: fresh generation"
+                    change_summary = "Diversity seed: radical refactor"
                     gen_config = LLMConfig(model=model_name, reasoning=reasoning)
+                    parent_preview = (
+                        parent.payload.raster_preview_data_url
+                        or parent.payload.raster_data_url
+                    )
+
+                    # Pass the existing SVG to give it a starting point
                     gen_prompt = build_svg_gen_prompt(
                         worker_params["image_data_url"],
-                        task.parent_id,
-                        svg_prev=None,
+                        task.task_id,
+                        svg_prev=parent.payload.svg,
+                        rasterized_svg_data_url=parent_preview if has_svg else None,
+                        change_summary=change_summary,
+                        diff_data_url=None,
                         force_diverse=True,
                     )
                     log.info(f"LLM call [diverse-seed] task={task.task_id}")
