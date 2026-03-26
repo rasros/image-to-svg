@@ -1,4 +1,16 @@
+import io
+
+from PIL import Image
+
+from svgizer.image_utils import png_bytes_to_data_url, resize_long_side
 from svgizer.svg.worker import _use_llm
+
+
+def _make_png(color: str = "red", size: int = 32) -> bytes:
+    img = Image.new("RGB", (size, size), color=color)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
 
 
 def test_use_llm_no_svg_always_true():
@@ -17,3 +29,41 @@ def test_use_llm_rate_one_always_calls():
     """With rate=1.0, always call the LLM even when an SVG exists."""
     for _ in range(20):
         assert _use_llm(has_svg=True, llm_rate=1.0) is True
+
+
+# ---------------------------------------------------------------------------
+# Preview generation (mirrors the logic in worker_loop)
+# ---------------------------------------------------------------------------
+
+
+def _compute_preview(png: bytes, long_side: int) -> str:
+    """Same logic as the preview block in worker_loop."""
+    full_img = Image.open(io.BytesIO(png)).convert("RGB")
+    preview_img = resize_long_side(full_img, long_side)
+    buf = io.BytesIO()
+    preview_img.save(buf, format="PNG")
+    return png_bytes_to_data_url(buf.getvalue())
+
+
+def test_worker_preview_downscales_image():
+    """Preview long side should not exceed the requested limit."""
+    png = _make_png(size=256)
+    preview = _compute_preview(png, long_side=64)
+
+    import base64
+
+    _, b64 = preview.split(",", 1)
+    img = Image.open(io.BytesIO(base64.b64decode(b64)))
+    assert max(img.size) <= 64
+
+
+def test_worker_preview_preserves_small_image():
+    """Images already smaller than long_side are not upscaled."""
+    png = _make_png(size=32)
+    preview = _compute_preview(png, long_side=128)
+
+    import base64
+
+    _, b64 = preview.split(",", 1)
+    img = Image.open(io.BytesIO(base64.b64decode(b64)))
+    assert img.size == (32, 32)

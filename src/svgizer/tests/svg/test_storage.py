@@ -54,10 +54,8 @@ def test_save_node_and_lineage(tmp_path, dummy_node):
 
     adapter.save_node(dummy_node)
 
-    expected_filename = "score00000.123456_node00042_parent00010.svg"
-
     assert adapter.nodes_dir is not None
-    svg_path = adapter.nodes_dir / expected_filename
+    svg_path = adapter.nodes_dir / "0.123456_42.svg"
     assert svg_path.is_file()
     assert adapter.max_node_id == 42
 
@@ -87,11 +85,10 @@ def test_load_resume_nodes(tmp_path):
     adapter.initialize()
 
     valid_svg = '<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>'
-    new_format_fn = "score00000.555000_node00015_parent00010.svg"
 
     prev_run_nodes = adapter.runs_dir / "2020-01-01_00-00-00" / "nodes"
     prev_run_nodes.mkdir(parents=True)
-    with (prev_run_nodes / new_format_fn).open("w") as f:
+    with (prev_run_nodes / "0.555000_15.svg").open("w") as f:
         f.write(valid_svg)
 
     nodes = adapter.load_resume_nodes()

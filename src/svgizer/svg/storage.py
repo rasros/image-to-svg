@@ -77,19 +77,17 @@ class FileStorageAdapter:
 
         log.info(f"Resuming top {max_nodes} nodes from latest run: {latest_run.name}")
 
-        file_pattern = re.compile(r"score([0-9.]+)_node(\d+)")
+        file_pattern = re.compile(r"^([0-9.]+)_(\d+)\.svg$")
         parsed_files = []
 
         for file_path in target_nodes_dir.glob("*.svg"):
-            match = file_pattern.search(file_path.name)
+            match = file_pattern.match(file_path.name)
             if match:
                 score = float(match.group(1))
                 node_id = int(match.group(2))
             else:
-                # Fallback if filename format is unexpected
                 score = float("inf")
-                id_match = re.search(r"node(\d+)", file_path.name)
-                node_id = int(id_match.group(1)) if id_match else (self._max_id + 1)
+                node_id = self._max_id + 1
 
             self._max_id = max(self._max_id, node_id)
             parsed_files.append((score, node_id, file_path))
@@ -123,10 +121,7 @@ class FileStorageAdapter:
 
         self._max_id = max(self._max_id, node.id)
 
-        # Standard filename: score_nodeID_parentID
-        base_fn = (
-            f"score{node.score:012.6f}_node{node.id:05d}_parent{node.parent_id:05d}"
-        )
+        base_fn = f"{node.score:.6f}_{node.id}"
 
         # 1. Save SVG
         if node.state.payload.svg:

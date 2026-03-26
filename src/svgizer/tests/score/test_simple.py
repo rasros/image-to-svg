@@ -61,3 +61,18 @@ def test_simple_fallback_scorer_invalid_data_returns_max_diff():
     score = scorer.score(ref, b"not a png")
 
     assert score == 1.0
+
+
+def test_lab_l1_identical_images_zero():
+    from svgizer.score.utils import lab_l1
+
+    img = Image.new("RGB", (32, 32), color="green")
+    assert lab_l1(img, img) == 0.0
+
+
+def test_lab_l1_different_images_nonzero():
+    from svgizer.score.utils import lab_l1
+
+    red = Image.new("RGB", (32, 32), color="red")
+    blue = Image.new("RGB", (32, 32), color="blue")
+    assert lab_l1(red, blue) > 0.0
