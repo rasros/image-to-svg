@@ -1,4 +1,4 @@
-import zlib
+import binascii
 from enum import Enum
 from typing import Protocol, TypeVar
 
@@ -7,17 +7,33 @@ from svgizer.search.models import ChainState, Result, SearchNode
 TState = TypeVar("TState")
 
 
-def ncd(a: str, b: str) -> float:
-    """Normalised Compression Distance: ~0 for near-identical, ~1 for unrelated."""
-    if not a or not b:
+def compute_signature(
+    text: str | None, num_perms: int = 64, ngram_size: int = 4
+) -> tuple[int, ...] | None:
+    """Compute a MinHash signature for O(1) Jaccard similarity estimation."""
+    if not text:
+        return None
+    encoded = text.encode("utf-8")
+    if len(encoded) < ngram_size:
+        ngrams = {encoded}
+    else:
+        ngrams = {encoded[i : i + ngram_size] for i in range(len(encoded) - ngram_size + 1)}
+
+    sig = []
+    for i in range(num_perms):
+        salt = i.to_bytes(4, "little")
+        sig.append(min(binascii.crc32(salt + ng) for ng in ngrams))
+    return tuple(sig)
+
+
+def estimate_jaccard(
+    sig1: tuple[int, ...] | None, sig2: tuple[int, ...] | None
+) -> float:
+    """Estimate Jaccard similarity from two MinHash signatures (0.0 to 1.0)."""
+    if not sig1 or not sig2 or len(sig1) != len(sig2):
         return 0.0
-    ca = len(zlib.compress(a.encode("utf-8"), level=6))
-    cb = len(zlib.compress(b.encode("utf-8"), level=6))
-    cab = len(zlib.compress((a + b).encode("utf-8"), level=6))
-    denom = max(ca, cb)
-    if denom == 0:
-        return 0.0
-    return (cab - min(ca, cb)) / denom
+    matches = sum(1 for a, b in zip(sig1, sig2) if a == b)
+    return matches / len(sig1)
 
 
 class StrategyType(str, Enum):

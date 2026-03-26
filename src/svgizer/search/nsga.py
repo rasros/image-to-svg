@@ -17,10 +17,9 @@ edit distance >= diversity_threshold) are skipped to prevent crossover waste.
 
 import logging
 import random
-from difflib import SequenceMatcher
 from typing import Generic, TypeVar
 
-from svgizer.search.base import ncd
+from svgizer.search.base import estimate_jaccard
 from svgizer.search.models import ChainState, Result, SearchNode
 
 log = logging.getLogger(__name__)
@@ -100,7 +99,7 @@ def crowding_distance(
                 - objectives[sorted_front[k - 1].id][m]
             ) / obj_range
 
-    return distances
+        return distances
 
 
 class NsgaStrategy(Generic[TState]):
@@ -114,10 +113,10 @@ class NsgaStrategy(Generic[TState]):
         pool_size:                  Max nodes in the selection pool, ordered by Pareto
                                     rank then crowding distance.
         crossover_prob:             Probability of selecting two parents instead of one.
-        diversity_threshold: Normalised edit-distance ratio above which two nodes are
-                            considered near-duplicates. The lower-quality duplicate is
-                            dropped from the pool. Set to 1.0 to disable.
-        diversity_boost_threshold: Mean NCD below which to recommend LLM seeding.
+        diversity_threshold:        MinHash Jaccard similarity above which two nodes are
+                                    considered near-duplicates. The lower-quality duplicate is
+                                    dropped from the pool. Set to 1.0 to disable.
+        diversity_boost_threshold:  Mean Jaccard distance below which to recommend LLM seeding.
     """
 
     def __init__(
@@ -137,13 +136,12 @@ class NsgaStrategy(Generic[TState]):
         return self.pool_size
 
     def _too_similar(self, node: SearchNode[TState], other: SearchNode[TState]) -> bool:
-        """True if node and other have nearly identical content."""
-        if node.content is None or other.content is None:
+        """True if node and other have nearly identical content based on MinHash."""
+        if not node.signature or not other.signature:
             return False
-        m = SequenceMatcher(None, node.content, other.content, autojunk=False)
-        return m.quick_ratio() >= self.diversity_threshold and (
-            m.ratio() >= self.diversity_threshold
-        )
+
+        sim = estimate_jaccard(node.signature, other.signature)
+        return sim >= self.diversity_threshold
 
     def select_parent(
         self, nodes: list[SearchNode[TState]], progress: float
@@ -206,28 +204,28 @@ class NsgaStrategy(Generic[TState]):
 
     def should_diversify(self, pool: list[SearchNode[TState]]) -> bool:
         """True when pool NCD is low enough to warrant fresh LLM seeds."""
-        candidates = [n for n in pool if n.content and n.score < float("inf")]
+        candidates = [n for n in pool if n.signature and n.score < float("inf")]
         if len(candidates) < 4:
             return False
         n = len(candidates)
         all_pairs = [(i, j) for i in range(n) for j in range(i + 1, n)]
 
-        # Exhaustive NCD check for small/resumed pools, sample for large ones
+        # Exhaustive check for small/resumed pools, sample for large ones
         if len(all_pairs) <= 28:
             sample_pairs = all_pairs
         else:
             sample_pairs = random.sample(all_pairs, 8)
 
-        mean_ncd = sum(
-            ncd(candidates[i].content, candidates[j].content)  # type: ignore[arg-type]
+        mean_distance = sum(
+            1.0 - estimate_jaccard(candidates[i].signature, candidates[j].signature)
             for i, j in sample_pairs
         ) / len(sample_pairs)
 
         log.info(
-            f"Evaluated pool diversity (mean NCD): {mean_ncd:.4f}."
+            f"Evaluated pool diversity (mean MinHash dist): {mean_distance:.4f} (Threshold: {self.diversity_boost_threshold})"
         )
 
-        return mean_ncd < self.diversity_boost_threshold
+        return mean_distance < self.diversity_boost_threshold
 
     def create_new_state(self, result: Result[TState]) -> ChainState[TState]:
         return ChainState(score=result.score, payload=result.payload)

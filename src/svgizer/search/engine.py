@@ -184,7 +184,7 @@ class MultiprocessSearchEngine(Generic[TState]):
                     state=new_state,
                     secondary_parent_id=res.secondary_parent_id,
                     complexity=res.complexity,
-                    content=res.content,
+                    signature=res.signature,
                 )
 
                 active_pool.append(new_node)

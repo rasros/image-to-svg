@@ -13,6 +13,7 @@ from svgizer.image_utils import (
 )
 from svgizer.llm import LLMConfig, get_provider
 from svgizer.score.complexity import svg_complexity
+from svgizer.search.base import compute_signature
 from svgizer.search import INVALID_SCORE, Result
 from svgizer.svg.adapter import SvgResultPayload
 from svgizer.svg.operations import (
@@ -20,7 +21,6 @@ from svgizer.svg.operations import (
     mutate_with_micro_search,
 )
 from svgizer.svg.prompts import (
-    build_crossover_prompt,
     build_summarize_prompt,
     build_svg_gen_prompt,
     extract_svg_fragment,
@@ -70,27 +70,12 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
         try:
             if task.secondary_parent_state and task.secondary_parent_state.payload.svg:
                 secondary_svg = task.secondary_parent_state.payload.svg
-                if use_llm:
-                    change_summary = "LLM crossover"
-                    gen_config = LLMConfig(model=model_name, reasoning=reasoning)
-                    gen_prompt = build_crossover_prompt(
-                        worker_params["image_data_url"],
-                        parent.payload.svg,
-                        secondary_svg,
-                    )
-                    log.info(
-                        f"LLM call [crossover] task={task.task_id} "
-                        f"p1={task.parent_id} p2={task.secondary_parent_id}"
-                    )
-                    raw = client.generate(gen_prompt, gen_config)
-                    svg = extract_svg_fragment(raw)
-                else:
-                    svg, change_summary = crossover_with_micro_search(
-                        svg_a=parent.payload.svg,
-                        svg_b=secondary_svg,
-                        orig_img_fast=orig_img_fast,
-                        num_trials=15,
-                    )
+                svg, change_summary = crossover_with_micro_search(
+                    svg_a=parent.payload.svg,
+                    svg_b=secondary_svg,
+                    orig_img_fast=orig_img_fast,
+                    num_trials=15,
+                )
 
             elif use_llm:
                 # force_diverse: generate from scratch to seed a new lineage.
@@ -179,6 +164,7 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
                 out_h=worker_params["original_h"],
             )
             complexity = svg_complexity(svg)
+            signature = compute_signature(svg)
 
             result_q.put(
                 Result(
@@ -192,7 +178,7 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
                     ),
                     secondary_parent_id=task.secondary_parent_id,
                     complexity=complexity,
-                    content=svg,
+                    signature=signature,
                 )
             )
 
@@ -208,5 +194,6 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
                     payload=SvgResultPayload(None, None, None),
                     invalid_msg=repr(e),
                     secondary_parent_id=task.secondary_parent_id,
+                    signature=None,
                 )
             )

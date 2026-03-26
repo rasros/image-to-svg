@@ -12,6 +12,7 @@ from svgizer.image_utils import (
 )
 from svgizer.score import ScorerType, get_scorer
 from svgizer.score.complexity import svg_complexity
+from svgizer.search.base import compute_signature
 from svgizer.search import (
     INVALID_SCORE,
     ChainState,
@@ -87,7 +88,7 @@ def run_svg_search(
                     id=current_new_id,
                     parent_id=0,
                     complexity=svg_complexity(svg_text),
-                    content=svg_text,  # Crucial for NCD calculations
+                    signature=compute_signature(svg_text),
                     state=ChainState(
                         score=new_score,
                         payload=SvgStatePayload(
