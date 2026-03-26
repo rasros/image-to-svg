@@ -5,9 +5,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from svgizer.score.complexity import svg_complexity
 from svgizer.search import SearchNode
-from svgizer.search.nsga import crowding_distance, non_dominated_sort
 from svgizer.svg.adapter import SvgStatePayload
 
 log = logging.getLogger(__name__)
@@ -48,7 +46,7 @@ class FileStorageAdapter:
         self.lineage_csv = self.current_run_dir / "lineage.csv"
         log.info(f"Storage initialized at: {self.current_run_dir}")
 
-    def load_resume_nodes(self, max_nodes: int = 20) -> list[tuple[int, str]]:
+    def load_resume_nodes(self) -> list[tuple[int, str]]:
         if not self.resume or not self.runs_dir.exists():
             return []
 
@@ -72,9 +70,7 @@ class FileStorageAdapter:
             log.warning(f"Latest run {latest_run.name} has no 'nodes' directory.")
             return []
 
-        log.info(
-            f"Resuming top {max_nodes} nodes from latest run: {latest_run.name} via Pareto front"
-        )
+        log.info(f"Loading nodes to resume from latest run: {latest_run.name}")
 
         file_pattern = re.compile(r"^([0-9.]+)_(\d+)\.svg$")
         parsed_files = []
@@ -82,69 +78,21 @@ class FileStorageAdapter:
         for file_path in target_nodes_dir.glob("*.svg"):
             match = file_pattern.match(file_path.name)
             if match:
-                score = float(match.group(1))
                 node_id = int(match.group(2))
             else:
-                score = float("inf")
                 node_id = self._max_id + 1
 
             self._max_id = max(self._max_id, node_id)
-            parsed_files.append((score, node_id, file_path))
+            parsed_files.append((node_id, file_path))
 
-        valid_nodes = []
-        for score, node_id, file_path in parsed_files:
+        resumed_data = []
+        for node_id, file_path in parsed_files:
             try:
                 content = file_path.read_text(encoding="utf-8").strip()
                 if content:
-                    comp = svg_complexity(content)
-                    node = SearchNode(
-                        score=score,
-                        id=node_id,
-                        parent_id=0,
-                        state=None,  # type: ignore
-                        complexity=comp,
-                    )
-                    valid_nodes.append((node, content))
+                    resumed_data.append((node_id, content))
             except Exception as e:
                 log.error(f"Failed to read resume node {file_path.name}: {e}")
-
-        if not valid_nodes:
-            return []
-
-        # Extract objectives for NSGA sorting
-        nodes_only = [n for n, _ in valid_nodes]
-        max_score = (
-            max((n.score for n in nodes_only if n.score < float("inf")), default=1.0)
-            or 1.0
-        )
-        max_comp = max((n.complexity for n in nodes_only), default=1.0) or 1.0
-
-        objectives = {
-            n.id: (n.score / max_score, n.complexity / max_comp) for n in nodes_only
-        }
-
-        fronts = non_dominated_sort(nodes_only, objectives)
-
-        resumed_data = []
-        node_to_content = {n.id: c for n, c in valid_nodes}
-
-        # Pick nodes front by front until we hit max_nodes
-        for front in fronts:
-            if len(resumed_data) >= max_nodes:
-                break
-
-            # Sort within the front using crowding distance to maximize diversity
-            distances = crowding_distance(front, objectives)
-            front_sorted = sorted(front, key=lambda n: -distances[n.id])
-
-            for node in front_sorted:
-                if len(resumed_data) >= max_nodes:
-                    break
-                resumed_data.append((node.id, node_to_content[node.id]))
-                log.info(
-                    f"Found node for resume: "
-                    f"ID {node.id} (Score: {node.score:.6f}, Comp: {node.complexity})"
-                )
 
         return sorted(resumed_data, key=lambda x: x[0])
 

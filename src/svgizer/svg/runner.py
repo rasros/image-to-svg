@@ -25,6 +25,7 @@ from svgizer.search import (
     StrategyType,
 )
 from svgizer.search.base import compute_signature
+from svgizer.search.nsga import crowding_distance, non_dominated_sort
 from svgizer.svg.adapter import SvgStatePayload, SvgStrategyAdapter
 from svgizer.svg.worker import worker_loop
 from svgizer.utils import setup_logger
@@ -73,7 +74,7 @@ def run_svg_search(
     initial_nodes = []
     current_new_id = 1
 
-    resumed_items = storage.load_resume_nodes(max_nodes=pool_size)
+    resumed_items = storage.load_resume_nodes()
     if resumed_items:
         log.info(
             f"Resuming {len(resumed_items)} nodes. Deduplicating and re-scoring..."
@@ -146,6 +147,46 @@ def run_svg_search(
                 current_new_id += 1
             except Exception as e:
                 log.error(f"Failed to import Node {old_id}: {e}")
+
+        if len(initial_nodes) > pool_size:
+            log.info(
+                f"Filtering {len(initial_nodes)} rescored nodes down to {pool_size}..."
+            )
+
+            if strategy_type == StrategyType.NSGA:
+                max_score = (
+                    max(
+                        (n.score for n in initial_nodes if n.score < float("inf")),
+                        default=1.0,
+                    )
+                    or 1.0
+                )
+                max_comp = (
+                    max((n.complexity for n in initial_nodes), default=1.0) or 1.0
+                )
+                objectives = {
+                    n.id: (n.score / max_score, n.complexity / max_comp)
+                    for n in initial_nodes
+                }
+
+                fronts = non_dominated_sort(initial_nodes, objectives)
+                filtered_nodes = []
+
+                for front in fronts:
+                    if len(filtered_nodes) >= pool_size:
+                        break
+
+                    distances = crowding_distance(front, objectives)
+                    front_sorted = sorted(front, key=lambda n: -distances[n.id])
+
+                    for node in front_sorted:
+                        if len(filtered_nodes) >= pool_size:
+                            break
+                        filtered_nodes.append(node)
+
+                initial_nodes = filtered_nodes
+            else:
+                initial_nodes = sorted(initial_nodes, key=lambda n: n.score)[:pool_size]
 
     if not initial_nodes:
         initial_nodes.append(
