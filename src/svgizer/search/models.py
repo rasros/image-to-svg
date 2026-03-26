@@ -49,3 +49,4 @@ class Result(Generic[TResultPayload]):
     complexity: float = 0.0
     content: str | None = None
     signature: tuple[int, ...] | None = None
+    llm_type: str | None = None

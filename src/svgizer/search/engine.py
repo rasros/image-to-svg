@@ -207,10 +207,14 @@ class MultiprocessSearchEngine(Generic[TState]):
                         diverse_task_ids.discard(res.task_id)
                         diverse_interval = min(diverse_interval * 2, 200)
 
-                    if res.invalid_msg == "Duplicate genome":
+                    if res.llm_type:
+                        log.info(
+                            f"[{res.llm_type.upper()} INVALID] task={res.task_id} msg={res.invalid_msg}"
+                        )
+                    elif res.invalid_msg == "Duplicate genome":
                         log.debug(f"Task {res.task_id} rejected: duplicate genome.")
                     else:
-                        log.warning(f"Task {res.task_id} rejected: {res.invalid_msg}")
+                        log.debug(f"Task {res.task_id} rejected: {res.invalid_msg}")
                     continue
 
                 if res.score is None:
@@ -248,9 +252,14 @@ class MultiprocessSearchEngine(Generic[TState]):
                             diverse_task_ids.discard(res.task_id)
                             diverse_interval = min(diverse_interval + 5, 25)
 
-                        log.debug(
-                            f"[REJECTED] node={new_node.id} score={new_node.score:.6f} (worse than pool)"
-                        )
+                        if res.llm_type:
+                            log.info(
+                                f"[{res.llm_type.upper()} REJECTED] node={new_node.id} score={new_node.score:.6f} (worse than pool)"
+                            )
+                        else:
+                            log.debug(
+                                f"[REJECTED] node={new_node.id} score={new_node.score:.6f} (worse than pool)"
+                            )
                         continue
 
                 if res.task_id in diverse_task_ids:
@@ -266,11 +275,24 @@ class MultiprocessSearchEngine(Generic[TState]):
 
                 if best_node is None or new_node.score < best_node.score:
                     best_node = new_node
-                    status = "NEW BEST"
+                    if res.llm_type:
+                        log.info(
+                            f"[{res.llm_type.upper()} NEW BEST] node={new_node.id} score={new_node.score:.6f} "
+                        )
+                    else:
+                        log.info(
+                            f"[NEW BEST] node={new_node.id} score={new_node.score:.6f} "
+                        )
                 else:
-                    status = "ACCEPTED"
+                    if res.llm_type:
+                        log.info(
+                            f"[{res.llm_type.upper()} ACCEPTED] node={new_node.id} score={new_node.score:.6f} "
+                        )
+                    else:
+                        log.debug(
+                            f"[ACCEPTED] node={new_node.id} score={new_node.score:.6f} "
+                        )
 
-                log.info(f"[{status}] node={new_node.id} score={new_node.score:.6f} ")
                 self.storage.save_node(new_node)
 
         finally:

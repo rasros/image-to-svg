@@ -67,6 +67,7 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
 
         # Determine use_llm independently of force_diverse
         use_llm = task.force_llm or _use_llm(has_svg, llm_rate)
+        llm_type = None
 
         try:
             if task.secondary_parent_state and task.secondary_parent_state.payload.svg:
@@ -80,6 +81,7 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
 
             elif use_llm:
                 if task.force_diverse:
+                    llm_type = "llm-diverse"
                     change_summary = "Diversity seed: radical refactor"
                     gen_config = LLMConfig(model=model_name, reasoning=reasoning)
                     parent_preview = (
@@ -97,10 +99,11 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
                         diff_data_url=None,
                         force_diverse=True,
                     )
-                    log.info(f"LLM call [diverse-seed] task={task.task_id}")
+                    log.debug(f"LLM call [diverse-seed] task={task.task_id}")
                     raw = client.generate(gen_prompt, gen_config)
                     svg = extract_svg_fragment(raw)
                 else:
+                    llm_type = "llm-generate"
                     parent_preview = (
                         parent.payload.raster_preview_data_url
                         or parent.payload.raster_data_url
@@ -115,7 +118,7 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
                             previous_summary=parent.payload.change_summary,
                         )
                         sum_config = LLMConfig(model=model_name, reasoning=reasoning)
-                        log.info(f"LLM call [summarize] task={task.task_id}")
+                        log.debug(f"LLM call [summarize] task={task.task_id}")
                         change_summary = client.generate(sum_prompt, sum_config)
 
                     diff_data_url = None
@@ -148,7 +151,7 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
                         change_summary=change_summary,
                         diff_data_url=diff_data_url,
                     )
-                    log.info(
+                    log.debug(
                         f"LLM call [generate] task={task.task_id} "
                         f"parent={task.parent_id} model={model_name}"
                     )
@@ -196,6 +199,7 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
                     secondary_parent_id=task.secondary_parent_id,
                     complexity=complexity,
                     signature=signature,
+                    llm_type=llm_type,
                 )
             )
 
@@ -212,5 +216,6 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
                     invalid_msg=repr(e),
                     secondary_parent_id=task.secondary_parent_id,
                     signature=None,
+                    llm_type=llm_type,
                 )
             )
