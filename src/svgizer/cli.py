@@ -1,15 +1,17 @@
 import argparse
+import os
 
 from svgizer.score import ScorerType
 from svgizer.search import StrategyType
 
 DEFAULT_MAX_ACCEPTS = 32
-DEFAULT_WORKERS = 4
+DEFAULT_WORKERS = os.cpu_count() or 4
 DEFAULT_MAX_WALL_SECONDS = 0
 DEFAULT_RESUME = True
 DEFAULT_WRITE_LINEAGE = True
 DEFAULT_IMAGE_LONG_SIDE = 512
 DEFAULT_REASONING = "medium"
+DEFAULT_LLM_RATE = 0.05
 
 
 def parse_args():
@@ -73,7 +75,7 @@ def parse_args():
         "--workers",
         type=int,
         default=DEFAULT_WORKERS,
-        help="Number of parallel worker processes.",
+        help=f"Number of parallel worker processes. Default: {DEFAULT_WORKERS} (CPU count).",
     )
     parser.add_argument(
         "--max-wall-seconds",
@@ -113,10 +115,10 @@ def parse_args():
     parser.add_argument(
         "--llm-rate",
         type=float,
-        default=0.2,
+        default=DEFAULT_LLM_RATE,
         help=(
-            "Fraction of tasks that call the LLM (0.0–1.0). "
-            "The remainder use local operations (crossover, mutations). Default: 0.2."
+            f"Fraction of tasks (0.0–1.0) that call the LLM; the rest use local "
+            f"operations (crossover, mutations). Default: {DEFAULT_LLM_RATE}."
         ),
     )
 

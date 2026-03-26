@@ -37,11 +37,11 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
     log = logging.getLogger("worker")
 
     try:
-        provider_name = worker_params.get("llm_provider", "openai")
-        api_key = worker_params.get("api_key")
-        model_name = worker_params.get("llm_model", "gpt-5.4")
-        reasoning = worker_params.get("reasoning", "medium")
-        llm_rate = float(worker_params.get("llm_rate", 0.2))
+        provider_name = worker_params["llm_provider"]
+        api_key = worker_params["api_key"]
+        model_name = worker_params["llm_model"]
+        reasoning = worker_params["reasoning"]
+        llm_rate = float(worker_params["llm_rate"])
 
         client = get_provider(provider_name, api_key)
         scorer = get_scorer(
@@ -101,7 +101,7 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
                     diff_data_url = generate_diff_data_url(
                         worker_params["original_png_bytes"],
                         cand_bytes,
-                        worker_params.get("image_long_side", 512),
+                        worker_params["image_long_side"],
                     )
                 elif has_svg:
                     cand_bytes = rasterize_svg_to_png_bytes(
@@ -112,7 +112,7 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
                     diff_data_url = generate_diff_data_url(
                         worker_params["original_png_bytes"],
                         cand_bytes,
-                        worker_params.get("image_long_side", 512),
+                        worker_params["image_long_side"],
                     )
 
                 gen_config = LLMConfig(model=model_name, reasoning=reasoning)
