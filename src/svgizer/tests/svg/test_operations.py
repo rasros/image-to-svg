@@ -7,6 +7,8 @@ from svgizer.svg.operations import (
     crossover,
     crossover_with_micro_search,
     mutate_drop_style_property,
+    mutate_duplicate_node,
+    mutate_insert_node,
     mutate_numeric,
     mutate_remove_node,
     mutate_with_micro_search,
@@ -102,6 +104,51 @@ def test_mutate_remove_node_no_children_unchanged():
     assert ET.fromstring(result).tag.endswith("svg")
 
 
+def test_mutate_insert_node_increases_children():
+    root_before = ET.fromstring(SVG_A)
+    count_before = len(list(root_before))
+    result = mutate_insert_node(SVG_A)
+    root_after = ET.fromstring(result)
+    assert len(list(root_after)) > count_before
+
+
+def test_mutate_insert_node_still_valid_svg():
+    result = mutate_insert_node(SVG_A)
+    root = ET.fromstring(result)
+    assert root.tag.endswith("svg")
+
+
+def test_mutate_insert_node_invalid_svg_unchanged():
+    result = mutate_insert_node("not xml")
+    assert result == "not xml"
+
+
+def test_mutate_duplicate_node_increases_children():
+    root_before = ET.fromstring(SVG_A)
+    count_before = len(list(root_before))
+    result = mutate_duplicate_node(SVG_A)
+    root_after = ET.fromstring(result)
+    assert len(list(root_after)) > count_before
+
+
+def test_mutate_duplicate_node_adds_transform():
+    result = mutate_duplicate_node(SVG_A)
+    root = ET.fromstring(result)
+    transforms = [el.get("transform", "") for el in root.iter()]
+    assert any("translate" in t for t in transforms)
+
+
+def test_mutate_duplicate_node_still_valid_svg():
+    result = mutate_duplicate_node(SVG_A)
+    root = ET.fromstring(result)
+    assert root.tag.endswith("svg")
+
+
+def test_mutate_duplicate_node_invalid_svg_unchanged():
+    result = mutate_duplicate_node("not xml")
+    assert result == "not xml"
+
+
 def test_mutate_numeric_changes_an_attribute():
     changed = False
     for _ in range(20):
@@ -141,7 +188,14 @@ def test_mutate_numeric_no_numeric_attrs_unchanged():
 
 
 @pytest.mark.parametrize(
-    "op", [mutate_remove_node, mutate_numeric, mutate_drop_style_property]
+    "op",
+    [
+        mutate_remove_node,
+        mutate_insert_node,
+        mutate_duplicate_node,
+        mutate_numeric,
+        mutate_drop_style_property,
+    ],
 )
 def test_mutation_result_is_string(op):
     assert isinstance(op(SVG_ONE), str)
@@ -286,7 +340,7 @@ def test_mutate_drop_style_property_removes_one_property():
     rect = root.find(f"{{{NS}}}rect")
     assert rect is not None
     props = [p.strip() for p in rect.get("style", "").split(";") if p.strip()]
-    assert len(props) == 2  # started with 3, one removed
+    assert len(props) == 2
 
 
 def test_mutate_drop_style_property_single_prop_unchanged():
