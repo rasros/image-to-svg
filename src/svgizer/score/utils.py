@@ -1,4 +1,6 @@
-from PIL import Image, ImageChops, ImageStat
+from functools import cache
+
+from PIL import Image, ImageChops, ImageCms, ImageStat
 
 
 def get_device() -> str:
@@ -11,9 +13,17 @@ def get_device() -> str:
     return "cpu"
 
 
+@cache
+def _rgb_to_lab_transform() -> ImageCms.ImageCmsTransform:
+    srgb = ImageCms.createProfile("sRGB")
+    lab = ImageCms.createProfile("LAB")
+    return ImageCms.buildTransformFromOpenProfiles(srgb, lab, "RGB", "LAB")
+
+
 def lab_l1(a_rgb: Image.Image, b_rgb: Image.Image) -> float:
-    a_lab = a_rgb.convert("LAB")
-    b_lab = b_rgb.convert("LAB")
+    t = _rgb_to_lab_transform()
+    a_lab = ImageCms.applyTransform(a_rgb, t)
+    b_lab = ImageCms.applyTransform(b_rgb, t)
     diff = ImageChops.difference(a_lab, b_lab)
     stat = ImageStat.Stat(diff)
     mean_abs = float(sum(stat.mean) / 3.0)  # [0..255]
