@@ -69,7 +69,8 @@ def test_engine_run_loop_terminates_on_max_accepts():
         score=0.1,
         payload="fake_payload",
     )
-    engine.result_q.put(res)
+    # Put into the unscored queue so the ScorerThread can process it
+    engine.unscored_q.put(res)
 
     initial_node = SearchNode(
         score=0.8,
@@ -119,7 +120,7 @@ def test_engine_patience_stops_on_no_improvement():
     engine = MultiprocessSearchEngine(workers=1, strategy=strat, storage=store)
 
     for score in (0.49, 0.48, 0.47):
-        engine.result_q.put(
+        engine.unscored_q.put(
             Result(
                 task_id=1,
                 parent_id=1,
@@ -149,7 +150,7 @@ def test_engine_patience_resets_on_improvement():
     engine = MultiprocessSearchEngine(workers=1, strategy=strat, storage=store)
 
     for score in (0.1, 0.09, 0.08):
-        engine.result_q.put(
+        engine.unscored_q.put(
             Result(
                 task_id=1,
                 parent_id=1,
@@ -224,7 +225,7 @@ def test_engine_active_pool_bounded():
     engine = MultiprocessSearchEngine(workers=1, strategy=strat, storage=store)
 
     for i in range(10):
-        engine.result_q.put(
+        engine.unscored_q.put(
             Result(
                 task_id=i + 1,
                 parent_id=1,
@@ -251,6 +252,8 @@ def test_engine_init_error_raises():
     engine = MultiprocessSearchEngine(
         workers=1, strategy=FakeStrategy(), storage=FakeStorage()
     )
+    # Put this directly in result_q to simulate it bypassing the standard
+    # Result object flow, ensuring the main loop catches it properly.
     engine.result_q.put({"init_error": "missing API key"})
 
     initial_node = SearchNode(
@@ -265,7 +268,7 @@ def test_engine_score_fn_none_with_unscored_result_raises():
     engine = MultiprocessSearchEngine(
         workers=1, strategy=FakeStrategy(), storage=FakeStorage()
     )
-    engine.result_q.put(
+    engine.unscored_q.put(
         Result(
             task_id=1,
             parent_id=1,

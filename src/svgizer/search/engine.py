@@ -1,6 +1,8 @@
+import contextlib
 import logging
 import multiprocessing as mp
 import queue
+import threading
 import time
 from collections.abc import Callable
 from typing import Any, Generic, TypeVar
@@ -29,7 +31,8 @@ class MultiprocessSearchEngine(Generic[TState]):
 
         self.ctx = mp.get_context("spawn")
         self.task_q = self.ctx.Queue(maxsize=max(64, workers * 8))
-        self.result_q = self.ctx.Queue()
+        self.unscored_q = self.ctx.Queue()
+        self.result_q = queue.Queue()
         self.procs: list[Any] = []
 
     def start_workers(self, worker_target: Callable, worker_params: dict) -> None:
@@ -37,7 +40,7 @@ class MultiprocessSearchEngine(Generic[TState]):
         for _ in range(max(1, self.workers)):
             p = self.ctx.Process(
                 target=worker_target,
-                args=(self.task_q, self.result_q, worker_params),
+                args=(self.task_q, self.unscored_q, worker_params),
                 daemon=True,
             )
             p.start()
@@ -56,6 +59,29 @@ class MultiprocessSearchEngine(Generic[TState]):
         warmup_diverse: int = 0,
     ) -> None:
         start_time = time.monotonic()
+
+        def _scorer_worker():
+            while True:
+                res = self.unscored_q.get()
+                if res is None:
+                    self.result_q.put(None)
+                    break
+
+                try:
+                    if res.valid and res.score is None and score_fn is not None:
+                        res.score = score_fn(res)
+                except Exception as e:
+                    res.valid = False
+                    res.invalid_msg = f"Scoring error: {e}"
+                    res.score = float("inf")
+
+                self.result_q.put(res)
+
+        scorer_thread = threading.Thread(
+            target=_scorer_worker, daemon=True, name="ScorerThread"
+        )
+        scorer_thread.start()
+
         node_states = {n.id: n.state for n in initial_nodes}
 
         sorted_initial = sorted(initial_nodes, key=lambda n: n.score)
@@ -138,6 +164,8 @@ class MultiprocessSearchEngine(Generic[TState]):
 
                 try:
                     res = self.result_q.get(timeout=0.2)
+                    if res is None:  # Caught shutdown sentinel from ScorerThread
+                        break
                 except queue.Empty:
                     if not any(p.is_alive() for p in self.procs):
                         raise RuntimeError(
@@ -204,9 +232,15 @@ class MultiprocessSearchEngine(Generic[TState]):
 
         finally:
             self._shutdown()
+            with contextlib.suppress(Exception):
+                self.unscored_q.put(None)
 
     def _shutdown(self) -> None:
         log.info("Shutting down workers...")
+
+        with contextlib.suppress(queue.Full):
+            self.unscored_q.put(None, timeout=0.5)
+
         for _ in self.procs:
             try:
                 self.task_q.put(None, timeout=0.5)

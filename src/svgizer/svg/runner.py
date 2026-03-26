@@ -1,3 +1,4 @@
+import concurrent.futures
 import io
 import logging
 import os
@@ -74,27 +75,39 @@ def run_svg_search(
     resumed_items = storage.load_resume_nodes(max_nodes=pool_size)
     if resumed_items:
         log.info(f"Resuming {len(resumed_items)} nodes. Re-scoring...")
-        for old_id, svg_text in resumed_items:
+
+        # Helper for threaded rasterization
+        def _prep_resume_node(item):
+            old_id, svg_text = item
+            png = rasterize_svg_to_png_bytes(
+                svg_text, out_w=original_w, out_h=original_h
+            )
+            preview = make_preview_data_url(png, image_long_side)
+            complexity = svg_complexity(svg_text)
+            sig = compute_signature(svg_text)
+            return old_id, svg_text, png, preview, complexity, sig
+
+        # Parallelize the CPU-bound rasterization/prep
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+            prepped_nodes = list(executor.map(_prep_resume_node, resumed_items))
+
+        # Sequentially score on the main thread (GPU bound)
+        for old_id, svg_text, png, preview, complexity, sig in prepped_nodes:
             try:
-                png = rasterize_svg_to_png_bytes(
-                    svg_text, out_w=original_w, out_h=original_h
-                )
                 new_score = scorer.score(scoring_ref, png)
 
                 imported_node = SearchNode(
                     score=new_score,
                     id=current_new_id,
                     parent_id=0,
-                    complexity=svg_complexity(svg_text),
-                    signature=compute_signature(svg_text),
+                    complexity=complexity,
+                    signature=sig,
                     state=ChainState(
                         score=new_score,
                         payload=SvgStatePayload(
                             svg=svg_text,
                             raster_data_url=None,
-                            raster_preview_data_url=make_preview_data_url(
-                                png, image_long_side
-                            ),
+                            raster_preview_data_url=preview,
                             change_summary=f"Imported from Node {old_id}",
                             invalid_msg=None,
                         ),
