@@ -20,9 +20,9 @@ class GreedyHillClimbingStrategy(Generic[TState]):
         best_node = min(nodes, key=lambda n: n.score)
         return best_node.id, None
 
-    def should_diversify(self, pool: list[SearchNode[TState]]) -> bool:
+    def should_diversify(self, pool: list[SearchNode[TState]]) -> tuple[bool, float]:
         _ = pool
-        return False
+        return False, 1.0
 
     def epoch_seeds(
         self, pool: list[SearchNode[TState]], max_seeds: int

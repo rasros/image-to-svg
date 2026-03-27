@@ -31,11 +31,13 @@ from svgizer.utils import setup_logger
 
 
 def _use_llm(has_svg: bool, llm_rate: float, llm_pressure: float) -> bool:
+    if llm_rate <= 0:
+        return False
     return not has_svg or random.random() < llm_rate * llm_pressure
 
 
 def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
-    setup_logger(worker_params["log_level"])
+    setup_logger(worker_params["log_level"], log_file=worker_params.get("log_file"))
     log = logging.getLogger("worker")
 
     try:

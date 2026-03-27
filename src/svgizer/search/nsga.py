@@ -200,10 +200,10 @@ class NsgaStrategy(Generic[TState]):
 
         return seeds or valid[:max_seeds]
 
-    def should_diversify(self, pool: list[SearchNode[TState]]) -> bool:
+    def should_diversify(self, pool: list[SearchNode[TState]]) -> tuple[bool, float]:
         candidates = [n for n in pool if n.signature and n.score < float("inf")]
         if len(candidates) < 4:
-            return False
+            return False, 1.0
         n = len(candidates)
         all_pairs = [(i, j) for i in range(n) for j in range(i + 1, n)]
 
@@ -217,7 +217,7 @@ class NsgaStrategy(Generic[TState]):
             for i, j in sample_pairs
         ) / len(sample_pairs)
 
-        return mean_distance < self.epoch_diversity
+        return mean_distance < self.epoch_diversity, mean_distance
 
     def create_new_state(self, result: Result[TState]) -> ChainState[TState]:
         return ChainState(score=result.score, payload=result.payload)

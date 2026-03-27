@@ -1,0 +1,211 @@
+import logging
+import threading
+import time
+
+from rich.console import Console
+from rich.live import Live
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
+
+from svgizer.search.stats import SearchStats
+
+_REFRESH_INTERVAL = 0.25
+_SPARK = "▁▂▃▄▅▆▇█"
+
+
+def _bar(fraction: float, width: int = 12) -> str:
+    filled = round(min(1.0, max(0.0, fraction)) * width)
+    return "█" * filled + "░" * (width - filled)
+
+
+def _fmt_score(score: float) -> str:
+    return f"{score:.6f}" if score < float("inf") else "—"
+
+
+def _fmt_elapsed(seconds: float) -> str:
+    h, rem = divmod(int(seconds), 3600)
+    m, s = divmod(rem, 60)
+    return f"{h:02d}:{m:02d}:{s:02d}"
+
+
+def _build_renderable(stats: SearchStats) -> Panel:
+    s = stats
+
+    # ── Header ────────────────────────────────────────────────────────────
+    header = (
+        f"[bold]{s.strategy_name or '—'}[/bold]"
+        f"  ·  model: [cyan]{s.model_name or '—'}[/cyan]"
+        f"  ·  epoch [bold]{s.epoch}[/bold]"
+        f"  ·  [dim]{_fmt_elapsed(s.elapsed())}[/dim]"
+    )
+
+    # ── Score row ──────────────────────────────────────────────────────────
+    score_line = f"  [bold green]{_fmt_score(s.best_score)}[/bold green]"
+
+    # ── Tasks row ─────────────────────────────────────────────────────────
+    tasks_line = (
+        f"  completed [bold]{s.tasks_completed:,}[/bold]"
+        f"   accept [green]{s.accept_rate() * 100:.1f}%[/green]"
+        f"   pool-rej [yellow]{s.pool_rejected_rate() * 100:.1f}%[/yellow]"
+        f"   invalid [red]{s.invalid_rate() * 100:.1f}%[/red]"
+        f"   dupes [dim]{s.duplicate_rate() * 100:.1f}%[/dim]"
+    )
+
+    # ── LLM row ───────────────────────────────────────────────────────────
+    llm_line = (
+        f"  calls [bold]{s.llm_call_count:,}[/bold]"
+        f"   valid [green]{s.llm_valid_rate() * 100:.1f}%[/green]"
+        f"   pool-acc [cyan]{s.llm_accept_rate() * 100:.1f}%[/cyan]"
+        f"   rate [yellow]{s.effective_llm_rate() * 100:.2f}%[/yellow]"
+    )
+
+    # ── Mutation row ───────────────────────────────────────────────────────
+    mut_line = (
+        f"  calls [bold]{s.mutation_call_count:,}[/bold]"
+        f"   pool-acc [cyan]{s.mutation_accept_rate() * 100:.1f}%[/cyan]"
+    )
+
+    # ── Convergence row ────────────────────────────────────────────────────
+    # Sparkline of improvement rate over time. High = actively finding new bests.
+    # Low/zero = search has converged or stagnated.
+    conv_history = list(s.convergence_history)
+    if conv_history:
+        lo, hi = min(conv_history), max(conv_history)
+        span = hi - lo or 1.0
+        spark = "".join(
+            _SPARK[int((v - lo) / span * (len(_SPARK) - 1))] for v in conv_history
+        )
+    else:
+        spark = "─" * 8
+    rate_now = s.improvement_rate()
+    rate_color = "green" if rate_now > 0.2 else "yellow" if rate_now > 0.05 else "red"
+    conv_line = (
+        f"  [dim]{spark}[/dim]"
+        f"  [{rate_color}]{rate_now * 100:.1f}% improving[/{rate_color}]"
+    )
+
+    # ── Diversity row (only when --epoch-diversity is active) ──────────────
+    div_line = None
+    if s.epoch_diversity > 0:
+        div_bar = _bar(s.pool_diversity, width=20)
+        if s.pool_diversity < s.epoch_diversity:
+            div_color = "red"
+        elif s.pool_diversity < s.epoch_diversity * 2:
+            div_color = "yellow"
+        else:
+            div_color = "green"
+        div_line = (
+            f"  [{div_color}]{div_bar}[/{div_color}]"
+            f"  {s.pool_diversity:.3f}"
+            f"  [dim]epoch at < {s.epoch_diversity:.3f}[/dim]"
+        )
+
+    # ── Stagnation row ─────────────────────────────────────────────────────
+    # When no epoch_patience is set, a bar is meaningless — just show the counter.
+    if s.epoch_patience > 0:
+        stag_frac = s.stagnation_fraction()
+        if stag_frac > 0.8:
+            bar_color = "red"
+        elif stag_frac > 0.5:
+            bar_color = "yellow"
+        else:
+            bar_color = "green"
+        stag_bar = _bar(stag_frac, width=20)
+        stag_line = (
+            f"  [{bar_color}]{stag_bar}[/{bar_color}]"
+            f"  {s.epoch_no_improve}/{s.epoch_patience}"
+        )
+    else:
+        stag_line = f"  [dim]{s.epoch_no_improve:,} tasks since last improvement[/dim]"
+
+    # ── Build table ───────────────────────────────────────────────────────
+    table = Table.grid(padding=(0, 1))
+    table.add_column(style="bold dim", width=10)
+    table.add_column()
+
+    table.add_row("score", Text.from_markup(score_line))
+    table.add_row("tasks", Text.from_markup(tasks_line))
+    table.add_row("llm", Text.from_markup(llm_line))
+    table.add_row("mutation", Text.from_markup(mut_line))
+    table.add_row("improvement", Text.from_markup(conv_line))
+    if div_line is not None:
+        table.add_row("diversity", Text.from_markup(div_line))
+    table.add_row("stagnation", Text.from_markup(stag_line))
+
+    # ── Recent events ─────────────────────────────────────────────────────
+    with s._lock:
+        events = list(s.recent_events)
+
+    if events:
+        table.add_row("", "")
+        for evt in events:
+            table.add_row("", Text(evt, style="dim", overflow="ellipsis", no_wrap=True))
+
+    return Panel(
+        table,
+        title=Text.from_markup(header),
+        title_align="left",
+        border_style="blue",
+    )
+
+
+class DashboardLogHandler(logging.Handler):
+    """Appends formatted log records to stats.recent_events for display."""
+
+    def __init__(self, stats: SearchStats, level: int = logging.INFO) -> None:
+        super().__init__(level)
+        self.stats = stats
+        self.setFormatter(logging.Formatter("%(message)s"))
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            msg = self.format(record)
+            with self.stats._lock:
+                self.stats.recent_events.append(msg)
+        except Exception:
+            self.handleError(record)
+
+
+class Dashboard:
+    """Live terminal dashboard backed by Rich Live."""
+
+    def __init__(self, stats: SearchStats) -> None:
+        self.stats = stats
+        self.log_handler = DashboardLogHandler(stats, level=logging.INFO)
+        self._console = Console(highlight=False)
+        self._live = Live(
+            console=self._console,
+            auto_refresh=False,
+            redirect_stderr=False,
+        )
+        self._thread: threading.Thread | None = None
+        self._stop = threading.Event()
+
+    def __enter__(self) -> "Dashboard":
+        self._stop.clear()
+        self._live.__enter__()
+        self._thread = threading.Thread(
+            target=self._loop, daemon=True, name="DashboardThread"
+        )
+        self._thread.start()
+        return self
+
+    def __exit__(self, *exc_info) -> None:
+        self._stop.set()
+        if self._thread:
+            self._thread.join(timeout=2.0)
+        # Final render
+        try:
+            self._live.update(_build_renderable(self.stats), refresh=True)
+        except Exception:
+            pass
+        self._live.__exit__(*exc_info)
+
+    def _loop(self) -> None:
+        while not self._stop.is_set():
+            try:
+                self._live.update(_build_renderable(self.stats), refresh=True)
+            except Exception:
+                pass
+            time.sleep(_REFRESH_INTERVAL)

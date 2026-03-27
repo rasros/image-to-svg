@@ -2,6 +2,11 @@ import concurrent.futures
 import io
 import logging
 import os
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from svgizer.dashboard import Dashboard
+    from svgizer.search.stats import SearchStats
 
 from PIL import Image
 from tqdm import tqdm
@@ -107,8 +112,16 @@ def run_svg_search(
     max_epochs: int | None = None,
     epoch_pool_size: int | None = None,
     vision_model: str = "ensemble",
+    stats: "SearchStats | None" = None,
+    dashboard: "Dashboard | None" = None,
 ) -> None:
-    setup_logger(log_level)
+    # Initialize storage first so we can switch to file-only logging immediately,
+    # before any heavy setup (scorer/model loading) produces terminal output.
+    storage.initialize()
+    run_log_file = storage.current_run_dir / "search.log"
+    setup_logger(log_level, log_file=run_log_file)
+    if dashboard is not None:
+        logging.getLogger().addHandler(dashboard.log_handler)
 
     original_img = Image.open(image_path).convert("RGB")
     original_w, original_h = original_img.size
@@ -125,8 +138,6 @@ def run_svg_search(
         vision_model=vision_model,
     )
     scoring_ref = scorer.prepare_reference(original_img)
-
-    storage.initialize()
 
     initial_nodes = []
     current_new_id = 1
@@ -266,6 +277,16 @@ def run_svg_search(
             )
         )
 
+    # Seed stats so the dashboard isn't blank on start.
+    if stats is not None:
+        stats.llm_rate = llm_rate
+        stats.epoch_diversity = epoch_diversity
+        valid = [n for n in initial_nodes if n.score < float("inf")]
+        if valid:
+            best_initial = min(valid, key=lambda n: n.score)
+            stats.best_score = best_initial.score
+            stats.score_history.append((0.0, best_initial.score))
+
     is_greedy = strategy_type == StrategyType.GREEDY
 
     if is_greedy:
@@ -314,6 +335,7 @@ def run_svg_search(
         "original_h": original_h,
         "image_long_side": image_long_side,
         "log_level": log_level,
+        "log_file": str(run_log_file),
         "goal": goal,
         "llm_provider": llm_provider,
         "llm_model": llm_model,
@@ -327,14 +349,27 @@ def run_svg_search(
         return scorer.score(scoring_ref, res.payload.raster_png)
 
     engine.start_workers(worker_loop, worker_params)
-    engine.run(
-        initial_nodes,
-        max_wall_seconds=max_wall_seconds,
-        epoch_patience=engine_epoch_patience,
-        epoch_min_delta=engine_epoch_min_delta,
-        active_pool_size=engine_pool_size,
-        score_fn=score_fn,
-        seed_tasks=engine_seed_tasks,
-        max_epochs=engine_max_epochs,
-        epoch_pool_size=engine_epoch_pool_size,
-    )
+
+    # Start dashboard only after the tqdm resume phase to avoid display conflicts.
+    dashboard_started = False
+    try:
+        if dashboard is not None:
+            dashboard.__enter__()
+            dashboard_started = True
+        engine.run(
+            initial_nodes,
+            max_wall_seconds=max_wall_seconds,
+            epoch_patience=engine_epoch_patience,
+            epoch_min_delta=engine_epoch_min_delta,
+            active_pool_size=engine_pool_size,
+            score_fn=score_fn,
+            seed_tasks=engine_seed_tasks,
+            max_epochs=engine_max_epochs,
+            epoch_pool_size=engine_epoch_pool_size,
+            stats=stats,
+        )
+    finally:
+        if dashboard_started:
+            dashboard.__exit__(None, None, None)
+        if dashboard is not None:
+            logging.getLogger().removeHandler(dashboard.log_handler)

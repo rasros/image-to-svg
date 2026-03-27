@@ -50,8 +50,8 @@ class SearchStrategy(Protocol[TState]):
 
     def create_new_state(self, result: Result[TState]) -> ChainState[TState]: ...
 
-    def should_diversify(self, pool: list[SearchNode]) -> bool:
-        """Return True when the pool has converged and a new epoch should start."""
+    def should_diversify(self, pool: list[SearchNode]) -> tuple[bool, float]:
+        """Return (trigger_epoch, pool_diversity) where diversity is mean pairwise Jaccard distance (0-1)."""
         ...
 
     def epoch_seeds(

@@ -9,6 +9,7 @@ from typing import Any, Generic, TypeVar
 
 from svgizer.search.base import SearchStrategy, StorageAdapter
 from svgizer.search.models import Result, SearchNode, Task
+from svgizer.search.stats import SearchStats
 
 TState = TypeVar("TState")
 log = logging.getLogger(__name__)
@@ -56,8 +57,13 @@ class MultiprocessSearchEngine(Generic[TState]):
         seed_tasks: int = 0,
         max_epochs: int | None = None,
         epoch_pool_size: int | None = None,
+        stats: SearchStats | None = None,
     ) -> None:
         start_time = time.monotonic()
+
+        if stats is not None:
+            stats.start_time = start_time
+            stats.epoch_patience = epoch_patience or 0
 
         # Track seen genomes to avoid redundant evaluations
         seen_signatures: set[tuple[int, ...]] = {
@@ -154,6 +160,9 @@ class MultiprocessSearchEngine(Generic[TState]):
                     ramp_ref = epoch_patience or 100
                     llm_pressure = min(1.0, epoch_no_improve / ramp_ref)
 
+                    if stats is not None:
+                        stats.llm_pressure = llm_pressure
+
                     self.task_q.put(
                         Task(
                             task_id=next_task_id,
@@ -189,16 +198,32 @@ class MultiprocessSearchEngine(Generic[TState]):
                 tasks_completed += 1
                 epoch_no_improve += 1
 
+                if stats is not None:
+                    stats.tasks_completed = tasks_completed
+                    stats.epoch_no_improve = epoch_no_improve
+                    if res.llm_type:
+                        stats.llm_call_count += 1
+                    else:
+                        stats.mutation_call_count += 1
+
                 if not res.valid:
+                    is_duplicate = res.invalid_msg == "Duplicate genome"
                     if res.llm_type:
                         log.info(
                             f"[{res.llm_type.upper()} INVALID] "
                             f"task={res.task_id} msg={res.invalid_msg}"
                         )
-                    elif res.invalid_msg == "Duplicate genome":
+                    elif is_duplicate:
                         log.debug(f"Task {res.task_id} rejected: duplicate genome.")
                     else:
                         log.debug(f"Task {res.task_id} rejected: {res.invalid_msg}")
+                    if stats is not None:
+                        if is_duplicate:
+                            stats.duplicate_count += 1
+                        else:
+                            stats.invalid_count += 1
+                            if res.llm_type:
+                                stats.llm_invalid_count += 1
                     continue
 
                 if res.score is None:
@@ -238,17 +263,39 @@ class MultiprocessSearchEngine(Generic[TState]):
                                 f"[REJECTED] node={new_node.id} "
                                 f"score={new_node.score:.6f} (worse than pool)"
                             )
+                        if stats is not None:
+                            stats.pool_rejected_count += 1
                         continue
 
                 node_states[new_node.id] = new_state
                 accepted_count += 1
+                is_new_best = best_node is None or new_node.score < best_node.score
+
+                if stats is not None:
+                    stats.accepted_count = accepted_count
+                    if res.llm_type:
+                        stats.llm_accepted_count += 1
+                    else:
+                        stats.mutation_accepted_count += 1
+                    stats.activity_window.append(1.0 if is_new_best else 0.0)
+                    stats._conv_sample_counter += 1
+                    if stats._conv_sample_counter >= 10:
+                        stats.convergence_history.append(stats.improvement_rate())
+                        stats._conv_sample_counter = 0
 
                 if new_node.score <= epoch_patience_best - epoch_min_delta:
                     epoch_patience_best = new_node.score
                     epoch_no_improve = 0
+                    if stats is not None:
+                        stats.epoch_no_improve = 0
 
-                if best_node is None or new_node.score < best_node.score:
+                if is_new_best:
                     best_node = new_node
+                    if stats is not None:
+                        stats.best_score = best_node.score
+                        stats.score_history.append(
+                            (time.monotonic() - start_time, best_node.score)
+                        )
                     if res.llm_type:
                         log.info(
                             f"[{res.llm_type.upper()} NEW BEST] "
@@ -278,7 +325,11 @@ class MultiprocessSearchEngine(Generic[TState]):
                         epoch_patience is not None
                         and epoch_no_improve >= epoch_patience
                     )
-                    low_diversity = self.strategy.should_diversify(active_pool)
+                    low_diversity, pool_diversity = self.strategy.should_diversify(
+                        active_pool
+                    )
+                    if stats is not None:
+                        stats.pool_diversity = pool_diversity
 
                     if staleness or low_diversity:
                         reason = "staleness" if staleness else "low diversity"
@@ -287,6 +338,8 @@ class MultiprocessSearchEngine(Generic[TState]):
                             f"(no_improve={epoch_no_improve}, pool={len(active_pool)})"
                         )
                         epoch += 1
+                        if stats is not None:
+                            stats.epoch = epoch
                         n_seeds = epoch_pool_size or max(1, active_pool_size // 4)
                         seeds = self.strategy.epoch_seeds(active_pool, n_seeds)
                         if seeds:
@@ -299,6 +352,8 @@ class MultiprocessSearchEngine(Generic[TState]):
                             active_pool = list(initial_nodes[:active_pool_size])
                             log.info(f"Epoch {epoch}: restarting from initial node.")
                         epoch_no_improve = 0
+                        if stats is not None:
+                            stats.epoch_no_improve = 0
                         valid_scores = [
                             n.score for n in active_pool if n.score < float("inf")
                         ]

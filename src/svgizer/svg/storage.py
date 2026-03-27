@@ -44,7 +44,7 @@ class FileStorageAdapter:
         self.nodes_dir = self.current_run_dir / "nodes"
         self.nodes_dir.mkdir(parents=True, exist_ok=True)
         self.lineage_csv = self.current_run_dir / "lineage.csv"
-        log.info(f"Storage initialized at: {self.current_run_dir}")
+        log.debug(f"Storage initialized at: {self.current_run_dir}")
 
     def load_resume_nodes(self) -> list[tuple[int, str]]:
         if not self.resume or not self.runs_dir.exists():

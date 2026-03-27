@@ -14,13 +14,14 @@ def _make_png(color: str = "red", size: int = 32) -> bytes:
     return buf.getvalue()
 
 
-def test_use_llm_no_svg_always_true():
+def test_use_llm_no_svg_uses_llm_when_rate_nonzero():
     for _ in range(20):
-        assert _use_llm(has_svg=False, llm_rate=0.0, llm_pressure=0.0) is True
+        assert _use_llm(has_svg=False, llm_rate=1.0, llm_pressure=1.0) is True
 
 
 def test_use_llm_rate_zero_never_calls():
     for _ in range(20):
+        assert _use_llm(has_svg=False, llm_rate=0.0, llm_pressure=0.0) is False
         assert _use_llm(has_svg=True, llm_rate=0.0, llm_pressure=1.0) is False
 
 

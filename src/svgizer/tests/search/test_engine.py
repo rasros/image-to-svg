@@ -28,9 +28,9 @@ class FakeStrategy:
             payload="new_fake_payload",
         )
 
-    def should_diversify(self, pool: list[SearchNode]) -> bool:
+    def should_diversify(self, pool: list[SearchNode]) -> tuple[bool, float]:
         _ = pool
-        return False
+        return False, 1.0
 
     def epoch_seeds(self, pool: list[SearchNode], max_seeds: int) -> list[SearchNode]:
         return pool[:max_seeds]

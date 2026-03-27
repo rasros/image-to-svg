@@ -41,7 +41,9 @@ class SvgStrategyAdapter:
     ) -> tuple[int, int | None]:
         return self.base_strategy.select_parent(nodes, progress)
 
-    def should_diversify(self, pool: list[SearchNode[SvgStatePayload]]) -> bool:
+    def should_diversify(
+        self, pool: list[SearchNode[SvgStatePayload]]
+    ) -> tuple[bool, float]:
         return self.base_strategy.should_diversify(pool)
 
     def epoch_seeds(

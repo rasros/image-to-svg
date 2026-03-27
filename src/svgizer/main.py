@@ -3,9 +3,12 @@ import os
 import sys
 
 from svgizer.cli import parse_args
+from svgizer.dashboard import Dashboard
 from svgizer.search.base import StrategyType
+from svgizer.search.stats import SearchStats
 from svgizer.svg.runner import run_svg_search
 from svgizer.svg.storage import FileStorageAdapter
+from svgizer.utils import setup_logger
 
 
 def determine_provider_and_model(args) -> tuple[str, str]:
@@ -40,16 +43,21 @@ def determine_provider_and_model(args) -> tuple[str, str]:
 
 def main():
     args = parse_args()
-
     provider, model = determine_provider_and_model(args)
 
-    logging.basicConfig(level=getattr(logging, args.log_level.upper(), logging.INFO))
+    setup_logger(args.log_level)
     logger = logging.getLogger("main")
-    logger.info("=== SVGizer parameters ===")
-    logger.info(f"  provider: {provider} | model: {model}")
+    logger.debug("=== SVGizer parameters ===")
+    logger.debug(f"  provider: {provider} | model: {model}")
     for key, val in sorted(vars(args).items()):
-        logger.info(f"  {key}: {val}")
-    logger.info("==========================")
+        logger.debug(f"  {key}: {val}")
+    logger.debug("==========================")
+
+    stats = SearchStats(
+        strategy_name=args.strategy,
+        model_name=model,
+        epoch_patience=args.epoch_patience or 0,
+    )
 
     storage = FileStorageAdapter(
         output_svg_path=args.output,
@@ -82,6 +90,8 @@ def main():
             max_epochs=None if args.max_epochs < 0 else max(1, args.max_epochs),
             epoch_pool_size=args.epoch_seeds or None,
             vision_model=args.vision_model,
+            stats=stats,
+            dashboard=Dashboard(stats),
         )
     except KeyboardInterrupt:
         print("\nSearch interrupted by user. Exiting safely...", file=sys.stderr)
