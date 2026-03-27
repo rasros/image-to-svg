@@ -156,14 +156,14 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "--seed-tasks",
+        "--seeds",
         type=int,
-        default=-1,
-        dest="seed_tasks",
+        default=0,
+        dest="seeds",
         help=(
             "Target number of LLM-seeded nodes for epoch 0. "
             "Resumed nodes count toward this. "
-            "Defaults to pool-size // 10 when -1."
+            "Defaults to pool-size // 10 when 0."
         ),
     )
 

@@ -76,7 +76,7 @@ def main():
             min_delta=args.min_delta,
             llm_rate=args.llm_rate,
             pool_size=args.pool_size,
-            seed_tasks=args.seed_tasks,
+            seeds=args.seeds,
             similarity_threshold=args.similarity_threshold,
             epoch_diversity=args.epoch_diversity,
             max_epochs=None if args.max_epochs < 0 else args.max_epochs + 1,

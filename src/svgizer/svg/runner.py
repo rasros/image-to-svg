@@ -101,7 +101,7 @@ def run_svg_search(
     min_delta: float = 1e-4,
     llm_rate: float = 0.2,
     pool_size: int = 20,
-    seed_tasks: int = -1,
+    seeds: int = 0,
     similarity_threshold: float = 0.97,
     epoch_diversity: float = 0.10,
     max_epochs: int | None = None,
@@ -276,7 +276,7 @@ def run_svg_search(
             epoch_diversity=epoch_diversity,
         )
 
-    seed_target = pool_size // 10 if seed_tasks < 0 else seed_tasks
+    seed_target = pool_size // 10 if seeds == 0 else seeds
     seeded = sum(1 for n in initial_nodes if n.state.payload.svg)
     epoch0_seed_tasks = max(0, seed_target - seeded)
 
