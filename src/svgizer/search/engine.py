@@ -150,6 +150,10 @@ class MultiprocessSearchEngine(Generic[TState]):
                     if is_epoch0_seed:
                         epoch0_seeds_dispatched += 1
 
+                    # Ramp LLM pressure from 0 → 1 as stagnation grows
+                    ramp_ref = epoch_patience or 100
+                    llm_pressure = min(1.0, epoch_no_improve / ramp_ref)
+
                     self.task_q.put(
                         Task(
                             task_id=next_task_id,
@@ -159,6 +163,7 @@ class MultiprocessSearchEngine(Generic[TState]):
                             secondary_parent_id=pid2,
                             secondary_parent_state=node_states[pid2] if pid2 else None,
                             force_llm=is_epoch0_seed,
+                            llm_pressure=llm_pressure,
                         )
                     )
                     next_task_id += 1
@@ -219,6 +224,7 @@ class MultiprocessSearchEngine(Generic[TState]):
                         range(len(active_pool)), key=lambda i: active_pool[i].score
                     )
                     evicted_node = active_pool.pop(worst_idx)
+                    node_states.pop(evicted_node.id, None)
 
                     if evicted_node is new_node:
                         if res.llm_type:

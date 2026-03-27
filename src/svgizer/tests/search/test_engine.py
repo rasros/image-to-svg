@@ -264,7 +264,7 @@ def test_engine_active_pool_bounded():
         ) -> tuple[int, int | None]:
             _ = progress
             self.max_seen = max(self.max_seen, len(nodes))
-            return 1, None
+            return nodes[0].id, None
 
     strat = TrackingStrategy()
     store = FakeStorage()

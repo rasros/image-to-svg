@@ -30,8 +30,8 @@ from svgizer.svg.prompts import (
 from svgizer.utils import setup_logger
 
 
-def _use_llm(has_svg: bool, llm_rate: float) -> bool:
-    return not has_svg or random.random() < llm_rate
+def _use_llm(has_svg: bool, llm_rate: float, llm_pressure: float) -> bool:
+    return not has_svg or random.random() < llm_rate * llm_pressure
 
 
 def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
@@ -65,7 +65,7 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
         parent = task.parent_state
         has_svg = bool(parent.payload.svg)
 
-        use_llm = task.force_llm or _use_llm(has_svg, llm_rate)
+        use_llm = task.force_llm or _use_llm(has_svg, llm_rate, task.llm_pressure)
         llm_type = None
 
         try:
