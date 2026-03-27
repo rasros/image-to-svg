@@ -13,7 +13,7 @@ class Scorer(Protocol):
 @dataclass(frozen=True)
 class ScoreConfig:
     target_long_side: int = 256
-    w_dreamsim: float = 0.85
+    w_vision: float = 0.85
     w_color: float = 0.15
 
 

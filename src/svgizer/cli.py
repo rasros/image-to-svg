@@ -48,26 +48,15 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         type=str,
         choices=[e.value for e in ScorerType],
         default=ScorerType.AUTO.value,
-        help="Difference scoring backend (dreamsim, simple, llm, or auto).",
+        help="Difference scoring backend (vision, simple, llm, or auto).",
     )
 
     parser.add_argument(
-        "--dreamsim-type",
+        "--vision-model",
         type=str,
-        default="dino_vitb16",
-        dest="dreamsim_type",
-        choices=[
-            "ensemble",
-            "dino_vitb16",
-            "clip_vitb32",
-            "open_clip_vitb32",
-            "dinov2_vitb14",
-            "synclr_vitb16",
-        ],
-        help=(
-            "DreamSim model variant. 'ensemble' (default) is highest quality; "
-            "single-model options (e.g. dino_vitb16) are faster."
-        ),
+        default="google/siglip-so400m-patch14-384",
+        dest="vision_model",
+        help="HuggingFace vision model for perceptual scoring.",
     )
 
     parser.add_argument(

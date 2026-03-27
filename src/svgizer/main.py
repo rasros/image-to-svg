@@ -81,7 +81,7 @@ def main():
             epoch_diversity=args.epoch_diversity,
             max_epochs=None if args.max_epochs < 0 else args.max_epochs + 1,
             epoch_pool_size=args.epoch_seeds or None,
-            dreamsim_type=args.dreamsim_type,
+            vision_model=args.vision_model,
         )
     except KeyboardInterrupt:
         print("\nSearch interrupted by user. Exiting safely...", file=sys.stderr)

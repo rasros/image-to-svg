@@ -106,7 +106,7 @@ def run_svg_search(
     epoch_diversity: float = 0.10,
     max_epochs: int | None = None,
     epoch_pool_size: int | None = None,
-    dreamsim_type: str = "ensemble",
+    vision_model: str = "ensemble",
 ) -> None:
     setup_logger(log_level)
 
@@ -122,7 +122,7 @@ def run_svg_search(
         scorer_type,
         provider_name=llm_provider,
         api_key=api_key,
-        dreamsim_type=dreamsim_type,
+        vision_model=vision_model,
     )
     scoring_ref = scorer.prepare_reference(original_img)
 
