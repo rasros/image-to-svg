@@ -9,8 +9,6 @@ if TYPE_CHECKING:
     from svgizer.search.stats import SearchStats
 
 from PIL import Image
-from tqdm import tqdm
-
 from svgizer.image_utils import (
     downscale_png_bytes,
     make_preview_data_url,
