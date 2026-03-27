@@ -135,7 +135,7 @@ def test_engine_epoch_patience_triggers_transition():
         workers=1, strategy=strat, storage=store, max_total_tasks=3
     )
 
-    # 3 results that don't improve by min_delta=0.1 from initial score of 0.5
+    # 3 results that don't improve by epoch_min_delta=0.1 from initial score of 0.5
     for score in (0.49, 0.48, 0.47):
         engine.unscored_q.put(
             Result(
@@ -156,14 +156,14 @@ def test_engine_epoch_patience_triggers_transition():
         max_accepts=100,
         max_wall_seconds=None,
         epoch_patience=3,
-        min_delta=0.1,
+        epoch_min_delta=0.1,
     )
     assert strat.epoch_seeds_calls >= 1
     assert store.save_called
 
 
 def test_engine_epoch_patience_resets_on_improvement():
-    """Epoch patience counter resets when a node improves beyond min_delta."""
+    """Epoch patience counter resets when a node improves beyond epoch_min_delta."""
 
     class TrackingStrategy(FakeStrategy):
         def __init__(self):
@@ -180,7 +180,7 @@ def test_engine_epoch_patience_resets_on_improvement():
         workers=1, strategy=strat, storage=store, max_total_tasks=3
     )
 
-    # Score 0.1 improves from 0.5 by 0.4 >= min_delta=0.1 → resets counter
+    # Score 0.1 improves from 0.5 by 0.4 >= epoch_min_delta=0.1 → resets counter
     # Scores 0.09, 0.08 don't improve from 0.1 by 0.1 → no_improve=1,2
     for score in (0.1, 0.09, 0.08):
         engine.unscored_q.put(
@@ -202,7 +202,7 @@ def test_engine_epoch_patience_resets_on_improvement():
         max_accepts=100,
         max_wall_seconds=None,
         epoch_patience=2,
-        min_delta=0.1,
+        epoch_min_delta=0.1,
     )
     # Task 1 improves → counter resets; epoch ends at task 3 (2 no-improves after reset)
     assert strat.epoch_seeds_calls >= 1

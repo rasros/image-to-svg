@@ -196,12 +196,12 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         dest="epoch_patience",
         help=(
             "End the current epoch and re-seed from the Pareto front if the best score "
-            "does not improve by --min-delta over this many consecutive tasks. "
+            "does not improve by --epoch-min-delta over this many consecutive tasks."
             "0 disables staleness-based epoch transitions."
         ),
     )
     parser.add_argument(
-        "--min-delta",
+        "--epoch-min-delta",
         type=float,
         default=1e-4,
         help=(

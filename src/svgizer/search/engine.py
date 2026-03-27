@@ -50,7 +50,7 @@ class MultiprocessSearchEngine(Generic[TState]):
         max_accepts: int = 2_000_000_000,
         max_wall_seconds: float | None = None,
         epoch_patience: int | None = None,
-        min_delta: float = 1e-4,
+        epoch_min_delta: float = 1e-4,
         active_pool_size: int = 20,
         score_fn: Callable[[Result], float] | None = None,
         seed_tasks: int = 0,
@@ -237,7 +237,7 @@ class MultiprocessSearchEngine(Generic[TState]):
                 node_states[new_node.id] = new_state
                 accepted_count += 1
 
-                if new_node.score <= epoch_patience_best - min_delta:
+                if new_node.score <= epoch_patience_best - epoch_min_delta:
                     epoch_patience_best = new_node.score
                     epoch_no_improve = 0
 
