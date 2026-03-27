@@ -1,4 +1,5 @@
 import base64
+import contextlib
 import io
 import logging
 import multiprocessing as mp
@@ -61,7 +62,10 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
         return
 
     while True:
-        task = task_q.get()
+        try:
+            task = task_q.get()
+        except (OSError, EOFError, BrokenPipeError):
+            break  # queue torn down during shutdown
         if task is None:
             break
 
@@ -192,17 +196,18 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
 
         except Exception as e:
             log.error(f"Task {task.task_id} failed: {e!r}")
-            result_q.put(
-                Result(
-                    task_id=task.task_id,
-                    parent_id=task.parent_id,
-                    worker_slot=task.worker_slot,
-                    valid=False,
-                    score=INVALID_SCORE,
-                    payload=SvgResultPayload(None, None, None),
-                    invalid_msg=repr(e),
-                    secondary_parent_id=task.secondary_parent_id,
-                    signature=None,
-                    llm_type=llm_type,
+            with contextlib.suppress(OSError, EOFError, BrokenPipeError):
+                result_q.put(
+                    Result(
+                        task_id=task.task_id,
+                        parent_id=task.parent_id,
+                        worker_slot=task.worker_slot,
+                        valid=False,
+                        score=INVALID_SCORE,
+                        payload=SvgResultPayload(None, None, None),
+                        invalid_msg=repr(e),
+                        secondary_parent_id=task.secondary_parent_id,
+                        signature=None,
+                        llm_type=llm_type,
+                    )
                 )
-            )

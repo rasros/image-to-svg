@@ -182,7 +182,7 @@ class Dashboard:
         self._live.__exit__(*exc_info)
 
     def _loop(self) -> None:
-        while not self._stop.is_set():
+        while not self._stop.is_set() and not self.stats.shutting_down:
             with contextlib.suppress(Exception):
                 self._live.update(_build_renderable(self.stats), refresh=True)
             time.sleep(_REFRESH_INTERVAL)

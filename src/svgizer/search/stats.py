@@ -33,6 +33,8 @@ class SearchStats:
 
     duplicate_count: int = 0  # results rejected as duplicate genomes
 
+    shutting_down: bool = False
+
     best_score: float = float("inf")
     # (elapsed_seconds, score) on each new-best event; kept for seeding but not graphed
     score_history: deque = dataclasses.field(default_factory=lambda: deque(maxlen=80))

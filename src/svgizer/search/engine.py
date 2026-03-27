@@ -365,6 +365,8 @@ class MultiprocessSearchEngine(Generic[TState]):
                         )
 
         finally:
+            if stats is not None:
+                stats.shutting_down = True
             self._shutdown()
 
     def _shutdown(self) -> None:
