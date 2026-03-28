@@ -29,6 +29,7 @@ from svgizer.search import (
     StorageAdapter,
     StrategyType,
 )
+from svgizer.search.collector import StatCollector
 from svgizer.search.diversity import simhash
 from svgizer.search.nsga import crowding_distance, non_dominated_sort
 from svgizer.svg.adapter import SvgStatePayload, SvgStrategyAdapter
@@ -279,15 +280,21 @@ def run_svg_search(
             )
 
         # Seed stats so the dashboard isn't blank on start.
-        if stats is not None:
-            stats.llm_rate = llm_rate
-            stats.epoch_diversity = epoch_diversity
-            stats.epoch_variance = epoch_variance or 0.0
+        collector = (
+            StatCollector(stats, run_dir=storage.current_run_dir)
+            if stats is not None
+            else None
+        )
+        if collector is not None:
+            collector.configure_run(
+                llm_rate=llm_rate,
+                epoch_diversity=epoch_diversity,
+                epoch_variance=epoch_variance or 0.0,
+            )
             valid = [n for n in initial_nodes if n.score < float("inf")]
             if valid:
                 best_initial = min(valid, key=lambda n: n.score)
-                stats.best_score = best_initial.score
-                stats.score_history.append((0.0, best_initial.score))
+                collector.seed_initial_score(best_initial.score)
 
         is_greedy = strategy_type == StrategyType.GREEDY
 
@@ -361,7 +368,7 @@ def run_svg_search(
             max_epochs=engine_max_epochs,
             epoch_pool_size=engine_epoch_pool_size,
             epoch_variance=epoch_variance,
-            stats=stats,
+            collector=collector,
         )
     finally:
         if dashboard is not None and dashboard_entered:

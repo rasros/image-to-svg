@@ -88,3 +88,8 @@ ignore = []
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
+
+[dependency-groups]
+dev = [
+    "matplotlib>=3.10.8",
+]

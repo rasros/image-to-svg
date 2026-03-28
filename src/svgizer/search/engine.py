@@ -9,8 +9,8 @@ from collections.abc import Callable
 from typing import Any, Generic, TypeVar
 
 from svgizer.search.base import SearchStrategy, StorageAdapter
+from svgizer.search.collector import StatCollector
 from svgizer.search.models import Result, SearchNode, Task
-from svgizer.search.stats import SearchStats
 
 TState = TypeVar("TState")
 log = logging.getLogger(__name__)
@@ -61,14 +61,15 @@ class MultiprocessSearchEngine(Generic[TState]):
         max_epochs: int | None = None,
         epoch_pool_size: int | None = None,
         epoch_variance: float | None = None,
-        stats: SearchStats | None = None,
+        collector: StatCollector | None = None,
     ) -> None:
         start_time = time.monotonic()
 
-        if stats is not None:
-            stats.start_time = start_time
-            stats.epoch_patience = epoch_patience or 0
-            stats.epoch_variance = epoch_variance or 0.0
+        if collector is not None:
+            collector.on_run_start(
+                start_time=start_time,
+                epoch_patience=epoch_patience or 0,
+            )
 
         def _scorer_worker():
             while True:
@@ -103,8 +104,9 @@ class MultiprocessSearchEngine(Generic[TState]):
         epoch = 0
         epoch_no_improve = 0
         epoch_patience_best = best_node.score if best_node else float("inf")
-        # Epoch 0: track how many seed tasks (force_llm) we've dispatched
+        # Epoch 0: track how many seed tasks (force_llm) we've dispatched/completed
         epoch0_seeds_dispatched = 0
+        epoch0_seeds_completed = 0
 
         next_task_id = 1
         tasks_completed = 0
@@ -156,8 +158,8 @@ class MultiprocessSearchEngine(Generic[TState]):
                     ramp_ref = epoch_patience or 100
                     llm_pressure = min(1.0, epoch_no_improve / ramp_ref)
 
-                    if stats is not None:
-                        stats.llm_pressure = llm_pressure
+                    if collector is not None:
+                        collector.on_llm_pressure(llm_pressure)
 
                     self.task_q.put(
                         Task(
@@ -183,17 +185,14 @@ class MultiprocessSearchEngine(Generic[TState]):
                         raise RuntimeError(
                             "All worker processes have exited."
                         ) from None
-                    if stats is not None and hasattr(self, "_llm_in_flight"):
-                        stats.llm_calls_in_flight = self._llm_in_flight.value
+                    if collector is not None and hasattr(self, "_llm_in_flight"):
                         valid_scores = [
                             n.score for n in active_pool if n.score < float("inf")
                         ]
-                        if len(valid_scores) >= 2:
-                            mean = sum(valid_scores) / len(valid_scores)
-                            stats.pool_score_std = math.sqrt(
-                                sum((s - mean) ** 2 for s in valid_scores)
-                                / len(valid_scores)
-                            )
+                        collector.on_idle(
+                            llm_in_flight=self._llm_in_flight.value,
+                            valid_scores=valid_scores,
+                        )
                     continue
 
                 if isinstance(res, dict) and "init_error" in res:
@@ -204,16 +203,19 @@ class MultiprocessSearchEngine(Generic[TState]):
                 in_flight -= 1
                 tasks_completed += 1
                 epoch_no_improve += 1
+                if epoch == 0 and seed_tasks > 0 and res.task_id <= seed_tasks:
+                    epoch0_seeds_completed += 1
 
-                if stats is not None:
-                    stats.tasks_completed = tasks_completed
-                    stats.epoch_no_improve = epoch_no_improve
-                    if hasattr(self, "_llm_in_flight"):
-                        stats.llm_calls_in_flight = self._llm_in_flight.value
-                    if res.llm_type:
-                        stats.llm_call_count += 1
-                    else:
-                        stats.mutation_call_count += 1
+                llm_in_flight = (
+                    self._llm_in_flight.value if hasattr(self, "_llm_in_flight") else 0
+                )
+                if collector is not None:
+                    collector.on_result(
+                        res,
+                        tasks_completed=tasks_completed,
+                        epoch_no_improve=epoch_no_improve,
+                        llm_in_flight=llm_in_flight,
+                    )
 
                 if not res.valid:
                     if res.llm_type:
@@ -223,10 +225,8 @@ class MultiprocessSearchEngine(Generic[TState]):
                         )
                     else:
                         log.debug(f"Task {res.task_id} rejected: {res.invalid_msg}")
-                    if stats is not None:
-                        stats.invalid_count += 1
-                        if res.llm_type:
-                            stats.llm_invalid_count += 1
+                    if collector is not None:
+                        collector.on_invalid(res)
                     continue
 
                 if res.score is None:
@@ -266,34 +266,30 @@ class MultiprocessSearchEngine(Generic[TState]):
                                 f"[REJECTED] node={new_node.id} "
                                 f"score={new_node.score:.6f} (worse than pool)"
                             )
-                        if stats is not None:
-                            stats.pool_rejected_count += 1
+                        if collector is not None:
+                            collector.on_pool_rejected(is_llm=bool(res.llm_type))
                         continue
 
                 node_states[new_node.id] = new_state
                 accepted_count += 1
                 is_new_best = best_node is None or new_node.score < best_node.score
 
-                if stats is not None:
-                    stats.accepted_count = accepted_count
-                    if res.llm_type:
-                        stats.llm_accepted_count += 1
-                    else:
-                        stats.mutation_accepted_count += 1
+                if collector is not None:
+                    collector.on_accepted(
+                        new_node,
+                        is_new_best=is_new_best,
+                        elapsed=time.monotonic() - start_time,
+                        llm_type=res.llm_type,
+                    )
 
                 if new_node.score <= epoch_patience_best - epoch_min_delta:
                     epoch_patience_best = new_node.score
                     epoch_no_improve = 0
-                    if stats is not None:
-                        stats.epoch_no_improve = 0
+                    if collector is not None:
+                        collector.on_no_improve_reset()
 
                 if is_new_best:
                     best_node = new_node
-                    if stats is not None:
-                        stats.best_score = best_node.score
-                        stats.score_history.append(
-                            (time.monotonic() - start_time, best_node.score)
-                        )
                     if res.llm_type:
                         log.info(
                             f"[{res.llm_type.upper()} NEW BEST] "
@@ -316,8 +312,10 @@ class MultiprocessSearchEngine(Generic[TState]):
 
                 self.storage.save_node(new_node)
 
-                # Check epoch-end conditions (only once epoch 0 seed phase is complete)
-                past_seed_phase = epoch > 0 or epoch0_seeds_dispatched >= seed_tasks
+                # Check epoch-end conditions (only once all epoch-0 seeds have returned)
+                past_seed_phase = (
+                    epoch > 0 or seed_tasks == 0 or epoch0_seeds_completed >= seed_tasks
+                )
                 if past_seed_phase:
                     staleness = (
                         epoch_patience is not None
@@ -326,8 +324,6 @@ class MultiprocessSearchEngine(Generic[TState]):
                     low_diversity, pool_diversity = self.strategy.should_diversify(
                         active_pool
                     )
-                    if stats is not None:
-                        stats.pool_diversity = pool_diversity
 
                     valid_scores = [
                         n.score for n in active_pool if n.score < float("inf")
@@ -340,8 +336,12 @@ class MultiprocessSearchEngine(Generic[TState]):
                         )
                     else:
                         score_std = 0.0
-                    if stats is not None:
-                        stats.pool_score_std = score_std
+
+                    if collector is not None:
+                        collector.on_pool_state(
+                            diversity=pool_diversity, score_std=score_std
+                        )
+
                     low_variance = (
                         epoch_variance is not None
                         and epoch_variance > 0
@@ -359,8 +359,9 @@ class MultiprocessSearchEngine(Generic[TState]):
                             f"(no_improve={epoch_no_improve}, pool={len(active_pool)})"
                         )
                         epoch += 1
-                        if stats is not None:
-                            stats.epoch = epoch
+                        if collector is not None:
+                            collector.on_epoch_transition(epoch)
+                        epoch_no_improve = 0
                         n_seeds = epoch_pool_size or max(1, active_pool_size // 4)
                         seeds = self.strategy.epoch_seeds(active_pool, n_seeds)
                         if seeds:
@@ -372,9 +373,6 @@ class MultiprocessSearchEngine(Generic[TState]):
                         else:
                             active_pool = list(initial_nodes[:active_pool_size])
                             log.info(f"Epoch {epoch}: restarting from initial node.")
-                        epoch_no_improve = 0
-                        if stats is not None:
-                            stats.epoch_no_improve = 0
                         valid_scores = [
                             n.score for n in active_pool if n.score < float("inf")
                         ]
@@ -383,8 +381,8 @@ class MultiprocessSearchEngine(Generic[TState]):
                         )
 
         finally:
-            if stats is not None:
-                stats.shutting_down = True
+            if collector is not None:
+                collector.on_shutdown()
             self._shutdown()
 
     def _shutdown(self) -> None:
