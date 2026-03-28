@@ -18,10 +18,9 @@ import argparse
 import csv
 import re
 import sys
-import zlib
 import xml.etree.ElementTree as ET
+import zlib
 from pathlib import Path
-
 
 _PATH_COMMANDS = re.compile(r"[MmLlHhVvCcSsQqTtAaZz]")
 
@@ -68,8 +67,8 @@ def pareto_front(nodes: list[dict]) -> list[dict]:
 def collect_svg_files(nodes_dir: Path) -> list[dict]:
     """
     Read SVG files from a nodes directory. Supports two filename formats:
-      New: {score}_{id}.svg                          e.g. 0.069113_2.svg
-      Old: score{score}_node{id}_parent{pid}.svg     e.g. score00000.069113_node00002_parent00000.svg
+      New: {score}_{id}.svg             e.g. 0.069113_2.svg
+      Old: score{score}_node{id}_...    e.g. score00000.069113_node00002_parent00000.svg
     """
     # New format: plain score_id.svg
     _new = re.compile(r"^([0-9.]+(?:inf)?)_(\d+)\.svg$")
@@ -86,7 +85,9 @@ def collect_svg_files(nodes_dir: Path) -> list[dict]:
         except ValueError:
             score = float("inf")
         node_id = int(m.group(2))
-        nodes.append({"id": node_id, "score": score, "path": svg_path, "complexity": None})
+        nodes.append(
+            {"id": node_id, "score": score, "path": svg_path, "complexity": None}
+        )
     return nodes
 
 
@@ -205,11 +206,7 @@ def resolve_run_dirs(path: Path) -> list[tuple[Path, list[Path]]]:
 
     # Recurse: find all runs/ directories anywhere beneath path
     all_runs_dirs = sorted(path.rglob("runs"), key=lambda p: str(p))
-    groups = [
-        (rd, _runs_dirs_from_runs(rd))
-        for rd in all_runs_dirs
-        if rd.is_dir()
-    ]
+    groups = [(rd, _runs_dirs_from_runs(rd)) for rd in all_runs_dirs if rd.is_dir()]
     if not groups:
         print(f"No runs/ directories found under {path}", file=sys.stderr)
         sys.exit(1)
@@ -217,10 +214,28 @@ def resolve_run_dirs(path: Path) -> list[tuple[Path, list[Path]]]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("path", help="SVG output path, project dir, runs dir, single run dir, or root dir to recurse.")
-    parser.add_argument("--dry-run", action="store_true", help="Print what would be deleted without deleting.")
-    parser.add_argument("--top", type=int, default=20, metavar="N", help="Number of top-score nodes to keep (default: 20).")
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "path",
+        help=(
+            "SVG output path, project dir, runs dir, single run dir,"
+            " or root dir to recurse."
+        ),
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print what would be deleted without deleting.",
+    )
+    parser.add_argument(
+        "--top",
+        type=int,
+        default=20,
+        metavar="N",
+        help="Number of top-score nodes to keep (default: 20).",
+    )
     args = parser.parse_args()
 
     groups = resolve_run_dirs(Path(args.path))
@@ -235,11 +250,13 @@ def main() -> None:
             kept, deleted = clean_run_dir(run_dir, top_n=args.top, dry_run=args.dry_run)
             if kept + deleted > 0:
                 action = "would keep" if args.dry_run else "kept"
-                print(f"  {run_dir.name}: {action} {kept}, {'would delete' if args.dry_run else 'deleted'} {deleted}")
+                del_word = "would delete" if args.dry_run else "deleted"
+                print(f"  {run_dir.name}: {action} {kept}, {del_word} {deleted}")
             total_kept += kept
             total_deleted += deleted
 
-    print(f"\nTotal: kept {total_kept}, {'would delete' if args.dry_run else 'deleted'} {total_deleted}")
+    del_word = "would delete" if args.dry_run else "deleted"
+    print(f"\nTotal: kept {total_kept}, {del_word} {total_deleted}")
 
 
 if __name__ == "__main__":
