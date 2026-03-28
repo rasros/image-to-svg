@@ -20,6 +20,9 @@ def build_dot_gen_prompt(
         "- Node declarations: "
         '`NodeName [label="...", shape=box, style=filled, fillcolor=lightblue];`\n'
         '- Edge declarations: `A -> B [label="...", style=dashed];`  (in a digraph)\n'
+        '- ALWAYS use plain quoted strings for labels: label="My Node"\n'
+        "- NEVER use HTML-style labels like label=<B>text</B> — "
+        "they cause parse errors\n"
         "- Graph attributes at top: `rankdir=LR; splines=ortho; nodesep=0.5;`\n"
         "- Layout engines: dot (hierarchical), neato (spring), "
         "fdp (force-directed), circo (radial)\n"

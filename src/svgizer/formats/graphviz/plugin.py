@@ -25,11 +25,98 @@ _DOT_RAW = re.compile(
 )
 
 
+_HTML_TAGS = re.compile(r"<[^>]*>")
+# Matches an attribute value like =<TAG ...>content</TAG> (paired open/close tag).
+# LLMs often emit this when they mean =<<TAG>content</TAG>> (the valid DOT form).
+_PAIRED_TAG_LABEL = re.compile(
+    r"=\s*<([A-Za-z][^>/\s]*)(?:[^>]*)>(.*?)</\1\s*>",
+    re.DOTALL | re.IGNORECASE,
+)
+
+
+def _plain_from_html_label(content: str) -> str:
+    """Strip HTML tags from DOT HTML-label content, return a plain string."""
+    plain = _HTML_TAGS.sub(" ", content)
+    plain = " ".join(plain.split())
+    return plain.replace('"', "'")
+
+
+def _fix_html_labels(dot: str) -> str:
+    """Convert malformed HTML attribute values (=<...>) to quoted plain strings.
+
+    DOT HTML labels require =<<TAG>...</TAG>> (double angle brackets at the
+    boundary).  LLMs often emit =<TAG>...</TAG> (single angle bracket), which
+    makes the DOT parser choke on every > inside the HTML.  This function
+    detects those attribute values, strips the HTML tags, and re-emits them
+    as plain quoted strings.
+
+    Properly doubled HTML labels (=<<...>>) are left untouched.
+    """
+
+    # Pass 1: handle paired open/close HTML tags, e.g. =<B>text</B>.
+    # These are the most common LLM mistake and can be caught with a regex.
+    def _strip_paired(m: re.Match) -> str:
+        inner = _plain_from_html_label(m.group(2))
+        return f'="{inner}"'
+
+    dot = _PAIRED_TAG_LABEL.sub(_strip_paired, dot)
+
+    # Pass 2: handle remaining single-level HTML labels, e.g. =<plain text>,
+    # using a depth-tracking scanner so we respect < > nesting correctly.
+    out: list[str] = []
+    i = 0
+    n = len(dot)
+    while i < n:
+        if dot[i] != "=":
+            out.append(dot[i])
+            i += 1
+            continue
+
+        # Peek past optional whitespace to find '<'
+        j = i + 1
+        while j < n and dot[j] in " \t\n\r":
+            j += 1
+
+        if j >= n or dot[j] != "<":
+            out.append(dot[i])
+            i += 1
+            continue
+
+        # Leave the valid doubled form =<<...>> untouched.
+        if j + 1 < n and dot[j + 1] == "<":
+            out.append(dot[i])
+            i += 1
+            continue
+
+        # Find the closing '>' tracking nesting depth.
+        depth = 0
+        k = j
+        while k < n:
+            if dot[k] == "<":
+                depth += 1
+            elif dot[k] == ">":
+                depth -= 1
+                if depth == 0:
+                    html_content = dot[j + 1 : k]
+                    plain = _plain_from_html_label(html_content)
+                    out.append(f'="{plain}"')
+                    i = k + 1
+                    break
+            k += 1
+        else:
+            out.append(dot[i])
+            i += 1
+
+    return "".join(out)
+
+
 def _sanitize_dot(dot: str) -> str:
     """Fix common LLM-generated DOT mistakes before validation."""
     # Upgrade undirected `graph` to `digraph` when directed edges are present.
     if "->" in dot and not re.search(r"\bdigraph\b", dot, re.IGNORECASE):
         dot = re.sub(r"\bgraph\b", "digraph", dot, count=1, flags=re.IGNORECASE)
+    # Convert malformed HTML labels to plain quoted strings.
+    dot = _fix_html_labels(dot)
     return dot
 
 
