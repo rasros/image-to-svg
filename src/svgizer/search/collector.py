@@ -2,7 +2,7 @@ import csv
 import logging
 import math
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from svgizer.search.models import Result, SearchNode
@@ -83,9 +83,30 @@ class StatCollector:
         s.start_time = start_time
         s.epoch_patience = epoch_patience
 
-    def on_shutdown(self) -> None:
+    def on_shutdown(self, *, final_pool: "list[Any] | None" = None) -> None:
         self._stats.shutting_down = True
+        if final_pool is not None:
+            self._write_pool_csv(final_pool)
         self._flush_row()
+
+    def _write_pool_csv(self, pool: "list[Any]") -> None:
+        if self._run_dir is None:
+            return
+        path = self._run_dir / "pool.csv"
+        try:
+            with path.open("w", encoding="utf-8", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=["id", "score", "complexity"])
+                writer.writeheader()
+                for node in pool:
+                    writer.writerow(
+                        {
+                            "id": node.id,
+                            "score": node.score if node.score < float("inf") else "",
+                            "complexity": node.complexity,
+                        }
+                    )
+        except Exception as e:
+            log.warning(f"Failed to write pool.csv: {e}")
 
     # ── Per-task events ───────────────────────────────────────────────────────
 

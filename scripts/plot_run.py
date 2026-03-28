@@ -161,6 +161,20 @@ def load_lineage(run_dir: Path) -> list[dict]:
     return rows
 
 
+def load_final_pool_ids(run_dir: Path) -> set[int] | None:
+    """Return the node IDs in the final active pool, or None if pool.csv is absent."""
+    path = run_dir / "pool.csv"
+    if not path.exists():
+        return None
+    ids: set[int] = set()
+    with path.open(encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            with contextlib.suppress(KeyError, ValueError):
+                ids.add(int(row["id"]))
+    return ids or None
+
+
 def resolve_run_dirs(path: Path, top: int | None) -> list[Path]:
     if path.suffix == ".svg":
         runs_dir = path.parent / path.stem / "runs"
@@ -189,10 +203,15 @@ def resolve_run_dirs(path: Path, top: int | None) -> list[Path]:
 # ── Pareto helper ──────────────────────────────────────────────────────────────
 
 
-def _pareto_top10(lin: list[dict]) -> list[dict]:
+def _pareto_top10(lin: list[dict], pool_ids: set[int] | None = None) -> list[dict]:
     """Return up to 10 Pareto-front nodes (minimise score and complexity),
-    sorted by score."""
-    valid = [r for r in lin if r["score"] < float("inf")]
+    sorted by score.
+
+    If *pool_ids* is provided (from pool.csv) only nodes in the final active
+    pool are considered; otherwise all lineage nodes are used as a fallback.
+    """
+    candidates = lin if pool_ids is None else [r for r in lin if r["id"] in pool_ids]
+    valid = [r for r in candidates if r["score"] < float("inf")]
     if not valid:
         return []
     front = []
@@ -277,12 +296,19 @@ def plot_score_history(ax, runs: list[tuple[Path, dict]], lineages: list[list[di
     ax.yaxis.set_major_formatter(mticker.FormatStrFormatter("%.4f"))
 
 
-def plot_pareto(ax, runs: list[tuple[Path, dict]], lineages: list[list[dict]]):
+def plot_pareto(
+    ax,
+    runs: list[tuple[Path, dict]],
+    lineages: list[list[dict]],
+    pool_ids_list: list[set[int] | None],
+):
     ax.set_title("Score vs complexity")
     ax.set_xlabel("Complexity")
     ax.set_ylabel("Score")
 
-    for i, ((run_dir, _), lin) in enumerate(zip(runs, lineages, strict=False)):
+    for i, ((run_dir, _), lin, pool_ids) in enumerate(
+        zip(runs, lineages, pool_ids_list, strict=False)
+    ):
         valid = [r for r in lin if r["score"] < float("inf")]
         if not valid:
             continue
@@ -296,7 +322,7 @@ def plot_pareto(ax, runs: list[tuple[Path, dict]], lineages: list[list[dict]]):
             label=_label(run_dir) if len(runs) > 1 else None,
         )
 
-        top10 = _pareto_top10(lin)
+        top10 = _pareto_top10(lin, pool_ids)
         for j, node in enumerate(top10):
             pc = PARETO_COLORS[j % len(PARETO_COLORS)]
             ax.scatter(
@@ -364,11 +390,18 @@ def plot_convergence(ax, runs: list[tuple[Path, dict]], lineages: list[list[dict
         ax.legend(lines1 + lines2, labels1 + labels2, fontsize=6, loc="upper right")
 
 
-def plot_summary_text(ax, runs: list[tuple[Path, dict]], lineages: list[list[dict]]):
+def plot_summary_text(
+    ax,
+    runs: list[tuple[Path, dict]],
+    lineages: list[list[dict]],
+    pool_ids_list: list[set[int] | None],
+):
     ax.axis("off")
     ax.set_title("Run summary", loc="left")
     lines = []
-    for (run_dir, stats), lin in zip(runs, lineages, strict=False):
+    for (run_dir, stats), lin, pool_ids in zip(
+        runs, lineages, pool_ids_list, strict=False
+    ):
         if not stats:
             continue
         best = stats.get("best_score")
@@ -406,10 +439,11 @@ def plot_summary_text(ax, runs: list[tuple[Path, dict]], lineages: list[list[dic
         lines.append(f"  diversity       {stats.get('pool_diversity_final', 0):.4f}")
         lines.append(f"  score std       {stats.get('pool_score_std_final', 0):.6f}")
 
-        top10 = _pareto_top10(lin)
+        pool_note = "" if pool_ids is None else " (final pool)"
+        top10 = _pareto_top10(lin, pool_ids)
         if top10:
             lines.append("")
-            lines.append("  pareto top 10:")
+            lines.append(f"  pareto top 10{pool_note}:")
             lines.append(
                 f"  {'#':>2}  {'id':>6}  {'score':>10}  {'complexity':>10}  ep"
             )
@@ -460,11 +494,14 @@ def main():
 
     runs = [(d, load_stats(d)) for d in run_dirs]
     lineages = [load_lineage(d) for d in run_dirs]
+    pool_ids_all = [load_final_pool_ids(d) for d in run_dirs]
 
     # Filter to runs that have any data at all
     combined = [
-        (r, s, lin)
-        for r, s, lin in zip(run_dirs, [s for _, s in runs], lineages, strict=False)
+        (r, s, lin, pids)
+        for r, s, lin, pids in zip(
+            run_dirs, [s for _, s in runs], lineages, pool_ids_all, strict=False
+        )
         if s or lin
     ]
     if not combined:
@@ -473,9 +510,10 @@ def main():
             file=sys.stderr,
         )
         sys.exit(1)
-    run_dirs_f = [r for r, _, _ in combined]
-    runs_f = [(r, s) for r, s, _ in combined]
-    lineages_f = [lin for _, _, lin in combined]
+    run_dirs_f = [r for r, _, _, _ in combined]
+    runs_f = [(r, s) for r, s, _, _ in combined]
+    lineages_f = [lin for _, _, lin, _ in combined]
+    pool_ids_f = [pids for _, _, _, pids in combined]
 
     fig, axes = plt.subplots(2, 2, figsize=(16, 12))
     title = run_dirs_f[0].parent.name if len(run_dirs_f) == 1 else str(Path(args.path))
@@ -489,9 +527,9 @@ def main():
     )
 
     plot_score_history(axes[0, 0], runs_f, lineages_f)
-    plot_pareto(axes[0, 1], runs_f, lineages_f)
+    plot_pareto(axes[0, 1], runs_f, lineages_f, pool_ids_f)
     plot_convergence(axes[1, 0], runs_f, lineages_f)
-    plot_summary_text(axes[1, 1], runs_f, lineages_f)
+    plot_summary_text(axes[1, 1], runs_f, lineages_f, pool_ids_f)
 
     if args.output:
         out = Path(args.output)

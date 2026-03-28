@@ -394,7 +394,7 @@ class MultiprocessSearchEngine(Generic[TState]):
 
         finally:
             if collector is not None:
-                collector.on_shutdown()
+                collector.on_shutdown(final_pool=active_pool)
             self._shutdown()
 
     def _shutdown(self) -> None:
