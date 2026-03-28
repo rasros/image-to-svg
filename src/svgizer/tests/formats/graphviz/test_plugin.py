@@ -2,7 +2,11 @@ import shutil
 
 import pytest
 
-from svgizer.formats.graphviz.plugin import GraphvizPlugin, _sanitize_dot
+from svgizer.formats.graphviz.plugin import (
+    GraphvizPlugin,
+    _fix_html_labels,
+    _sanitize_dot,
+)
 
 _DOT_AVAILABLE = shutil.which("dot") is not None
 
@@ -39,6 +43,58 @@ def test_sanitize_strict_graph_upgraded():
 def test_sanitize_already_digraph_unchanged():
     result = _sanitize_dot("digraph G { A -> B -> C }")
     assert result.count("digraph") == 1
+
+
+# ── _fix_html_labels ─────────────────────────────────────────────────────────
+
+
+def test_fix_html_labels_plain_label_unchanged():
+    dot = 'digraph G { A [label="hello"]; }'
+    assert _fix_html_labels(dot) == dot
+
+
+def test_fix_html_labels_simple_html_tag():
+    dot = "digraph G { A [label=<Node A>]; }"
+    result = _fix_html_labels(dot)
+    assert "<" not in result.split("label=")[1].split("]")[0]
+    assert '"Node A"' in result
+
+
+def test_fix_html_labels_nested_html_tags():
+    dot = "digraph G { A [label=<B>bold text</B>]; }"
+    result = _fix_html_labels(dot)
+    # Should produce a plain quoted string with no unescaped angle brackets
+    label_part = result.split("label=")[1].split("]")[0]
+    assert label_part.startswith('"')
+    assert "<" not in label_part
+    assert ">" not in label_part
+
+
+def test_fix_html_labels_multiline_html():
+    dot = "digraph G { A [label=<\n  <TABLE><TR><TD>cell</TD></TR></TABLE>\n>]; }"
+    result = _fix_html_labels(dot)
+    label_part = result.split("label=")[1].split("]")[0]
+    assert "<" not in label_part
+    assert ">" not in label_part
+
+
+def test_fix_html_labels_doubled_angle_bracket_left_alone():
+    # <<...>> is valid DOT HTML label syntax — should NOT be modified
+    dot = "digraph G { A [label=<<B>bold</B>>]; }"
+    result = _fix_html_labels(dot)
+    assert "<<" in result
+
+
+def test_fix_html_labels_no_html_noop():
+    dot = "digraph G { A -> B; }"
+    assert _fix_html_labels(dot) == dot
+
+
+def test_sanitize_dot_fixes_html_labels():
+    dot = "digraph G { A [label=<B>hello</B>] -> B; }"
+    result = _sanitize_dot(dot)
+    assert "<B>" not in result
+    assert "</B>" not in result
 
 
 # ── extract_from_llm ──────────────────────────────────────────────────────────
