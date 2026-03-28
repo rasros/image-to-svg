@@ -18,26 +18,7 @@ import argparse
 import csv
 import re
 import sys
-import xml.etree.ElementTree as ET
-import zlib
 from pathlib import Path
-
-_PATH_COMMANDS = re.compile(r"[MmLlHhVvCcSsQqTtAaZz]")
-
-
-def svg_complexity(svg: str) -> float:
-    compressed_size = len(zlib.compress(svg.encode("utf-8"), level=9))
-    try:
-        root = ET.fromstring(svg)
-        element_count = sum(1 for _ in root.iter())
-        path_vertices = sum(
-            len(_PATH_COMMANDS.findall(el.get("d", "")))
-            for el in root.iter()
-            if el.get("d")
-        )
-    except ET.ParseError:
-        return float(compressed_size)
-    return float(compressed_size + element_count * 50 + path_vertices * 5)
 
 
 def _dominates(a: tuple[float, float], b: tuple[float, float]) -> bool:
@@ -111,17 +92,6 @@ def load_complexities_from_lineage(lineage_csv: Path, nodes: list[dict]) -> None
         print(f"  Warning: could not read {lineage_csv}: {e}", file=sys.stderr)
 
 
-def fill_missing_complexities(nodes: list[dict]) -> None:
-    """Compute complexity from SVG text for nodes where it's still missing."""
-    for node in nodes:
-        if node["complexity"] is None:
-            try:
-                text = node["path"].read_text(encoding="utf-8")
-                node["complexity"] = svg_complexity(text)
-            except Exception:
-                node["complexity"] = 0.0
-
-
 def clean_run_dir(run_dir: Path, top_n: int, dry_run: bool) -> tuple[int, int]:
     """
     Clean a single run directory. Returns (kept, deleted) counts.
@@ -135,7 +105,9 @@ def clean_run_dir(run_dir: Path, top_n: int, dry_run: bool) -> tuple[int, int]:
         return 0, 0
 
     load_complexities_from_lineage(run_dir / "lineage.csv", nodes)
-    fill_missing_complexities(nodes)
+    for node in nodes:
+        if node["complexity"] is None:
+            node["complexity"] = 0.0
 
     valid = [n for n in nodes if n["score"] < float("inf")]
 
