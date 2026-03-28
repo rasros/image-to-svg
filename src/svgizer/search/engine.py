@@ -1,5 +1,6 @@
 import contextlib
 import logging
+import math
 import multiprocessing as mp
 import queue
 import threading
@@ -59,6 +60,7 @@ class MultiprocessSearchEngine(Generic[TState]):
         seed_tasks: int = 0,
         max_epochs: int | None = None,
         epoch_pool_size: int | None = None,
+        epoch_variance: float | None = None,
         stats: SearchStats | None = None,
     ) -> None:
         start_time = time.monotonic()
@@ -66,6 +68,7 @@ class MultiprocessSearchEngine(Generic[TState]):
         if stats is not None:
             stats.start_time = start_time
             stats.epoch_patience = epoch_patience or 0
+            stats.epoch_variance = epoch_variance or 0.0
 
         def _scorer_worker():
             while True:
@@ -180,6 +183,17 @@ class MultiprocessSearchEngine(Generic[TState]):
                         raise RuntimeError(
                             "All worker processes have exited."
                         ) from None
+                    if stats is not None and hasattr(self, "_llm_in_flight"):
+                        stats.llm_calls_in_flight = self._llm_in_flight.value
+                        valid_scores = [
+                            n.score for n in active_pool if n.score < float("inf")
+                        ]
+                        if len(valid_scores) >= 2:
+                            mean = sum(valid_scores) / len(valid_scores)
+                            stats.pool_score_std = math.sqrt(
+                                sum((s - mean) ** 2 for s in valid_scores)
+                                / len(valid_scores)
+                            )
                     continue
 
                 if isinstance(res, dict) and "init_error" in res:
@@ -315,8 +329,31 @@ class MultiprocessSearchEngine(Generic[TState]):
                     if stats is not None:
                         stats.pool_diversity = pool_diversity
 
-                    if staleness or low_diversity:
-                        reason = "staleness" if staleness else "low diversity"
+                    valid_scores = [
+                        n.score for n in active_pool if n.score < float("inf")
+                    ]
+                    if len(valid_scores) >= 2:
+                        mean = sum(valid_scores) / len(valid_scores)
+                        score_std = math.sqrt(
+                            sum((s - mean) ** 2 for s in valid_scores)
+                            / len(valid_scores)
+                        )
+                    else:
+                        score_std = 0.0
+                    if stats is not None:
+                        stats.pool_score_std = score_std
+                    low_variance = (
+                        epoch_variance is not None
+                        and epoch_variance > 0
+                        and score_std < epoch_variance
+                    )
+
+                    if staleness or low_diversity or low_variance:
+                        reason = (
+                            "staleness"
+                            if staleness
+                            else ("low diversity" if low_diversity else "low variance")
+                        )
                         log.info(
                             f"Epoch {epoch} → {epoch + 1}: {reason} "
                             f"(no_improve={epoch_no_improve}, pool={len(active_pool)})"

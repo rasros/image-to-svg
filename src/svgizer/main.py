@@ -86,6 +86,7 @@ def main():
             pool_size=args.pool_size,
             seeds=args.seeds,
             epoch_diversity=args.epoch_diversity,
+            epoch_variance=args.epoch_variance or None,
             max_epochs=None if args.max_epochs < 0 else max(1, args.max_epochs),
             epoch_pool_size=args.epoch_seeds or None,
             vision_model=args.vision_model,

@@ -6,7 +6,7 @@ from svgizer.search import StrategyType
 
 DEFAULT_MAX_EPOCHS = -1
 DEFAULT_WORKERS = os.cpu_count() or 4
-DEFAULT_MAX_WALL_SECONDS = 0
+DEFAULT_MAX_WALL_SECONDS = 60 * 15
 DEFAULT_RESUME = False
 DEFAULT_WRITE_LINEAGE = True
 DEFAULT_IMAGE_LONG_SIDE = 512
@@ -14,6 +14,7 @@ DEFAULT_REASONING = "medium"
 DEFAULT_LLM_RATE = 1 / (DEFAULT_WORKERS * 5)
 DEFAULT_POOL_SIZE = 100
 DEFAULT_EPOCH_DIVERSITY = 0.0
+DEFAULT_EPOCH_VARIANCE = 0.0
 
 
 def parse_args(args: list[str] | None = None) -> argparse.Namespace:
@@ -163,6 +164,18 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Trigger an epoch transition when mean pairwise genome diversity "
             "drops below this threshold. 0 disables diversity-based epoch transitions."
+        ),
+    )
+
+    parser.add_argument(
+        "--epoch-variance",
+        type=float,
+        default=DEFAULT_EPOCH_VARIANCE,
+        dest="epoch_variance",
+        help=(
+            "Trigger an epoch transition when the std dev of scores in the active pool "
+            "drops below this threshold (pool converged). "
+            "0 disables variance-based epoch transitions."
         ),
     )
 

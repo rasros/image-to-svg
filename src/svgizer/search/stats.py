@@ -33,6 +33,9 @@ class SearchStats:
 
     shutting_down: bool = False
 
+    pool_score_std: float = 0.0  # std dev of scores in active pool (0 = converged)
+    epoch_variance: float = 0.0  # --epoch-variance threshold (0 = disabled)
+
     best_score: float = float("inf")
     # (elapsed_seconds, score) on each new-best event; kept for seeding but not graphed
     score_history: deque = dataclasses.field(default_factory=lambda: deque(maxlen=80))

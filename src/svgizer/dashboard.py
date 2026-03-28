@@ -83,6 +83,26 @@ def _build_renderable(stats: SearchStats) -> Panel:
         f"  [{div_color}]{div_bar}[/{div_color}]  {s.pool_diversity:.3f}{div_threshold}"
     )
 
+    # ── Score variance row ────────────────────────────────────────────────
+    if s.epoch_variance > 0:
+        # Bar scaled so full = 4× threshold (threshold is expected convergence point)
+        var_frac = min(1.0, s.pool_score_std / (s.epoch_variance * 4))
+        if s.pool_score_std < s.epoch_variance:
+            var_color = "red"
+        elif s.pool_score_std < s.epoch_variance * 2:
+            var_color = "yellow"
+        else:
+            var_color = "green"
+        var_threshold = f"  [dim]epoch at < {s.epoch_variance:.4f}[/dim]"
+    else:
+        var_frac = 0.0
+        var_color = "cyan"
+        var_threshold = ""
+    var_bar = _bar(var_frac, width=20)
+    var_line = (
+        f"  [{var_color}]{var_bar}[/{var_color}]  {s.pool_score_std:.4f}{var_threshold}"
+    )
+
     # ── Stagnation row ─────────────────────────────────────────────────────
     # When no epoch_patience is set, a bar is meaningless — just show the counter.
     if s.epoch_patience > 0:
@@ -111,6 +131,7 @@ def _build_renderable(stats: SearchStats) -> Panel:
     table.add_row("llm", Text.from_markup(llm_line))
     table.add_row("mutation", Text.from_markup(mut_line))
     table.add_row("diversity", Text.from_markup(div_line))
+    table.add_row("variance", Text.from_markup(var_line))
     table.add_row("stagnation", Text.from_markup(stag_line))
 
     # ── Recent events ─────────────────────────────────────────────────────
