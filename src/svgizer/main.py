@@ -4,11 +4,13 @@ import sys
 
 from svgizer.cli import parse_args
 from svgizer.dashboard import Dashboard
+from svgizer.formats.graphviz.plugin import GraphvizPlugin
+from svgizer.formats.svg.plugin import SvgPlugin
 from svgizer.search.base import StrategyType
 from svgizer.search.stats import SearchStats
-from svgizer.svg.runner import run_svg_search
-from svgizer.svg.storage import FileStorageAdapter
 from svgizer.utils import setup_logger
+from svgizer.vector.runner import run_vector_search
+from svgizer.vector.storage import FileStorageAdapter
 
 
 def determine_provider_and_model(args) -> tuple[str, str]:
@@ -53,6 +55,8 @@ def main():
         logger.debug(f"  {key}: {val}")
     logger.debug("==========================")
 
+    plugin = GraphvizPlugin() if args.format == "graphviz" else SvgPlugin()
+
     stats = SearchStats(
         strategy_name=args.strategy,
         model_name=model,
@@ -60,13 +64,14 @@ def main():
     )
 
     storage = FileStorageAdapter(
-        output_svg_path=args.output,
+        output_path=args.output,
+        file_extension=plugin.file_extension,
         resume=args.resume,
         openai_image_long_side=args.image_long_side,
     )
 
     try:
-        run_svg_search(
+        run_vector_search(
             image_path=args.image,
             storage=storage,
             workers=args.workers,
@@ -79,6 +84,7 @@ def main():
             llm_provider=provider,
             llm_model=model,
             reasoning=args.reasoning,
+            format_plugin=plugin,
             write_lineage=args.write_lineage,
             epoch_patience=args.epoch_patience or None,
             epoch_min_delta=args.epoch_min_delta,

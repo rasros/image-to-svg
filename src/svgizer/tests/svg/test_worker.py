@@ -4,7 +4,7 @@ import io
 from PIL import Image
 
 from svgizer.image_utils import png_bytes_to_data_url, resize_long_side
-from svgizer.svg.worker import _use_llm
+from svgizer.vector.worker import _use_llm
 
 
 def _make_png(color: str = "red", size: int = 32) -> bytes:
@@ -16,18 +16,18 @@ def _make_png(color: str = "red", size: int = 32) -> bytes:
 
 def test_use_llm_no_svg_uses_llm_when_rate_nonzero():
     for _ in range(20):
-        assert _use_llm(has_svg=False, llm_rate=1.0, llm_pressure=1.0) is True
+        assert _use_llm(has_content=False, llm_rate=1.0, llm_pressure=1.0) is True
 
 
 def test_use_llm_rate_zero_never_calls():
     for _ in range(20):
-        assert _use_llm(has_svg=False, llm_rate=0.0, llm_pressure=0.0) is False
-        assert _use_llm(has_svg=True, llm_rate=0.0, llm_pressure=1.0) is False
+        assert _use_llm(has_content=False, llm_rate=0.0, llm_pressure=0.0) is False
+        assert _use_llm(has_content=True, llm_rate=0.0, llm_pressure=1.0) is False
 
 
 def test_use_llm_rate_one_always_calls():
     for _ in range(20):
-        assert _use_llm(has_svg=True, llm_rate=1.0, llm_pressure=1.0) is True
+        assert _use_llm(has_content=True, llm_rate=1.0, llm_pressure=1.0) is True
 
 
 def _compute_preview(png: bytes, long_side: int) -> str:

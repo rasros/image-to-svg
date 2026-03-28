@@ -1,30 +1,19 @@
 import dataclasses
 
+from svgizer.formats.models import VectorResultPayload, VectorStatePayload
 from svgizer.image_utils import make_preview_data_url, png_bytes_to_data_url
 from svgizer.search import ChainState, Result, SearchNode, SearchStrategy
 
 
 @dataclasses.dataclass
-class SvgStatePayload:
-    svg: str | None
-    raster_data_url: str | None
-    raster_preview_data_url: str | None
-    change_summary: str | None
-    invalid_msg: str | None
+class VectorStrategyAdapter:
+    base_strategy: SearchStrategy[VectorStatePayload]
+    openai_image_long_side: int
+    write_lineage: bool
 
-
-@dataclasses.dataclass
-class SvgResultPayload:
-    svg: str | None
-    raster_png: bytes | None
-    change_summary: str | None
-    raster_preview_data_url: str | None = None
-
-
-class SvgStrategyAdapter:
     def __init__(
         self,
-        base_strategy: SearchStrategy[SvgStatePayload],
+        base_strategy: SearchStrategy[VectorStatePayload],
         openai_image_long_side: int,
         write_lineage: bool,
     ):
@@ -37,23 +26,23 @@ class SvgStrategyAdapter:
         return self.base_strategy.top_k_count
 
     def select_parent(
-        self, nodes: list[SearchNode[SvgStatePayload]], progress: float
+        self, nodes: list[SearchNode[VectorStatePayload]], progress: float
     ) -> tuple[int, int | None]:
         return self.base_strategy.select_parent(nodes, progress)
 
     def should_diversify(
-        self, pool: list[SearchNode[SvgStatePayload]]
+        self, pool: list[SearchNode[VectorStatePayload]]
     ) -> tuple[bool, float]:
         return self.base_strategy.should_diversify(pool)
 
     def epoch_seeds(
-        self, pool: list[SearchNode[SvgStatePayload]], max_seeds: int
-    ) -> list[SearchNode[SvgStatePayload]]:
+        self, pool: list[SearchNode[VectorStatePayload]], max_seeds: int
+    ) -> list[SearchNode[VectorStatePayload]]:
         return self.base_strategy.epoch_seeds(pool, max_seeds)
 
-    def create_new_state(self, result: Result) -> ChainState[SvgStatePayload]:
+    def create_new_state(self, result: Result) -> ChainState[VectorStatePayload]:
         new_state = self.base_strategy.create_new_state(result)
-        result_payload: SvgResultPayload = result.payload
+        result_payload: VectorResultPayload = result.payload
 
         raster_data_url = None
         if self.write_lineage and result_payload.raster_png:
@@ -65,8 +54,8 @@ class SvgStrategyAdapter:
                 result_payload.raster_png, self.openai_image_long_side
             )
 
-        new_state.payload = SvgStatePayload(
-            svg=result_payload.svg,
+        new_state.payload = VectorStatePayload(
+            content=result_payload.content,
             raster_data_url=raster_data_url,
             raster_preview_data_url=preview_data_url,
             change_summary=result_payload.change_summary,

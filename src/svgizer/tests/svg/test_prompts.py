@@ -1,4 +1,4 @@
-from svgizer.svg.prompts import (
+from svgizer.formats.svg.prompts import (
     build_summarize_prompt,
     build_svg_gen_prompt,
     extract_svg_fragment,

@@ -17,6 +17,7 @@ dependencies = [
     "transformers>=4.40.0",
     "rich>=14.3.3",
     "tqdm>=4.67.3",
+    "graphviz>=0.21",
 ]
 
 [project.optional-dependencies]

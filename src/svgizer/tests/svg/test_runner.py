@@ -1,10 +1,11 @@
 import pytest
 from PIL import Image
 
+from svgizer.formats.svg.plugin import SvgPlugin
 from svgizer.score import ScorerType
 from svgizer.search import StrategyType
-from svgizer.svg.runner import run_svg_search
-from svgizer.svg.storage import FileStorageAdapter
+from svgizer.vector.runner import run_vector_search
+from svgizer.vector.storage import FileStorageAdapter
 
 
 @pytest.mark.llm
@@ -14,13 +15,15 @@ def test_run_svg_search_end_to_end(tmp_path):
     img.save(img_path)
 
     out_svg_path = tmp_path / "output.svg"
+    plugin = SvgPlugin()
     storage = FileStorageAdapter(
-        output_svg_path=str(out_svg_path),
+        output_path=str(out_svg_path),
+        file_extension=plugin.file_extension,
         resume=False,
         openai_image_long_side=64,
     )
 
-    run_svg_search(
+    run_vector_search(
         image_path=str(img_path),
         storage=storage,
         workers=1,
@@ -33,6 +36,7 @@ def test_run_svg_search_end_to_end(tmp_path):
         reasoning="none",
         llm_provider="openai",
         llm_model="gpt-5.4-nano",
+        format_plugin=plugin,
         write_lineage=False,
         max_epochs=None,
     )

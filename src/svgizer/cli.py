@@ -211,6 +211,14 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     )
 
     parser.add_argument(
+        "--format",
+        type=str,
+        choices=["svg", "graphviz"],
+        default="svg",
+        help="Output vector format to generate (default: svg).",
+    )
+
+    parser.add_argument(
         "--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"]
     )
 

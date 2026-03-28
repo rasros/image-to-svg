@@ -8,34 +8,23 @@ import signal
 
 from PIL import Image
 
+from svgizer.formats.models import VectorResultPayload
 from svgizer.image_utils import (
     generate_diff_data_url,
     png_bytes_to_data_url,
-    rasterize_svg_to_png_bytes,
     resize_long_side,
 )
 from svgizer.llm import LLMConfig, get_provider
 from svgizer.score.complexity import visual_complexity
 from svgizer.search import INVALID_SCORE, Result
 from svgizer.search.diversity import simhash
-from svgizer.svg.adapter import SvgResultPayload
-from svgizer.svg.operations import (
-    crossover_with_micro_search,
-    mutate_with_micro_search,
-)
-from svgizer.svg.prompts import (
-    build_summarize_prompt,
-    build_svg_gen_prompt,
-    extract_svg_fragment,
-    is_valid_svg,
-)
 from svgizer.utils import setup_logger
 
 
-def _use_llm(has_svg: bool, llm_rate: float, llm_pressure: float) -> bool:
+def _use_llm(has_content: bool, llm_rate: float, llm_pressure: float) -> bool:
     if llm_rate <= 0:
         return False
-    return not has_svg or random.random() < llm_rate * llm_pressure
+    return not has_content or random.random() < llm_rate * llm_pressure
 
 
 def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
@@ -44,6 +33,7 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
     log = logging.getLogger("worker")
 
     try:
+        plugin = worker_params["format_plugin"]
         provider_name = worker_params["llm_provider"]
         api_key = worker_params["api_key"]
         model_name = worker_params["llm_model"]
@@ -72,19 +62,21 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
             break
 
         parent = task.parent_state
-        has_svg = bool(parent.payload.svg)
+        has_content = bool(parent.payload.content)
 
-        use_llm = task.force_llm or _use_llm(has_svg, llm_rate, task.llm_pressure)
+        use_llm = task.force_llm or _use_llm(has_content, llm_rate, task.llm_pressure)
         llm_type = None
 
         try:
-            if task.secondary_parent_state and task.secondary_parent_state.payload.svg:
-                secondary_svg = task.secondary_parent_state.payload.svg
-                svg, change_summary = crossover_with_micro_search(
-                    svg_a=parent.payload.svg,
-                    svg_b=secondary_svg,
-                    orig_img_fast=orig_img_fast,
-                    num_trials=15,
+            if (
+                task.secondary_parent_state
+                and task.secondary_parent_state.payload.content
+            ):
+                secondary_content = task.secondary_parent_state.payload.content
+                content, change_summary = plugin.crossover(
+                    parent.payload.content,
+                    secondary_content,
+                    orig_img_fast,
                 )
 
             elif use_llm:
@@ -99,8 +91,8 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
                     )
                     change_summary = worker_params.get("goal")
 
-                    if has_svg:
-                        sum_prompt = build_summarize_prompt(
+                    if has_content:
+                        sum_prompt = plugin.build_summarize_prompt(
                             worker_params["image_data_url"],
                             parent_preview,
                             custom_goal=worker_params.get("goal"),
@@ -119,9 +111,9 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
                             cand_bytes,
                             worker_params["image_long_side"],
                         )
-                    elif has_svg:
-                        cand_bytes = rasterize_svg_to_png_bytes(
-                            parent.payload.svg,
+                    elif has_content:
+                        cand_bytes = plugin.rasterize(
+                            parent.payload.content,
                             out_w=worker_params["original_w"],
                             out_h=worker_params["original_h"],
                         )
@@ -132,11 +124,11 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
                         )
 
                     gen_config = LLMConfig(model=model_name, reasoning=reasoning)
-                    gen_prompt = build_svg_gen_prompt(
+                    gen_prompt = plugin.build_generate_prompt(
                         worker_params["image_data_url"],
                         task.parent_id,
-                        svg_prev=parent.payload.svg,
-                        rasterized_svg_data_url=parent_preview if has_svg else None,
+                        content_prev=parent.payload.content,
+                        raster_preview_url=parent_preview if has_content else None,
                         change_summary=change_summary,
                         diff_data_url=diff_data_url,
                     )
@@ -145,30 +137,29 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
                         f"parent={task.parent_id} model={model_name}"
                     )
                     raw = client.generate(gen_prompt, gen_config)
-                    svg = extract_svg_fragment(raw)
+                    content = plugin.extract_from_llm(raw)
                 finally:
                     if llm_in_flight is not None:
                         with llm_in_flight.get_lock():
                             llm_in_flight.value -= 1
 
             else:
-                svg, change_summary = mutate_with_micro_search(
-                    parent_svg=parent.payload.svg,
-                    orig_img_fast=orig_img_fast,
-                    num_trials=15,
+                content, change_summary = plugin.mutate(
+                    parent.payload.content,
+                    orig_img_fast,
                 )
 
-            valid, err = is_valid_svg(svg)
+            valid, err = plugin.validate(content)
             if not valid:
                 raise ValueError(err)
 
-            png = rasterize_svg_to_png_bytes(
-                svg,
+            png = plugin.rasterize(
+                content,
                 out_w=worker_params["original_w"],
                 out_h=worker_params["original_h"],
             )
             complexity = visual_complexity(png)
-            signature = simhash(svg)
+            signature = simhash(content)
 
             full_img = Image.open(io.BytesIO(png)).convert("RGB")
             preview_img = resize_long_side(full_img, worker_params["image_long_side"])
@@ -183,8 +174,8 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
                     worker_slot=task.worker_slot,
                     valid=True,
                     score=None,
-                    payload=SvgResultPayload(
-                        svg=svg,
+                    payload=VectorResultPayload(
+                        content=content,
                         raster_png=png,
                         change_summary=change_summary,
                         raster_preview_data_url=preview_data_url,
@@ -206,7 +197,7 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, worker_params: dict):
                         worker_slot=task.worker_slot,
                         valid=False,
                         score=INVALID_SCORE,
-                        payload=SvgResultPayload(None, None, None),
+                        payload=VectorResultPayload(None, None, None),
                         invalid_msg=repr(e),
                         secondary_parent_id=task.secondary_parent_id,
                         signature=None,

@@ -3,13 +3,13 @@ import io
 import pytest
 from PIL import Image
 
-from svgizer.llm import LLMConfig, get_provider
-from svgizer.svg.prompts import (
+from svgizer.formats.svg.prompts import (
     build_summarize_prompt,
     build_svg_gen_prompt,
     extract_svg_fragment,
     is_valid_svg,
 )
+from svgizer.llm import LLMConfig, get_provider
 
 _MODEL = "gpt-5.4-nano"
 

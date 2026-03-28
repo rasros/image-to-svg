@@ -219,7 +219,6 @@ def crossover_with_micro_search(
     orig_img_fast: Image.Image,
     num_trials: int = 15,
 ) -> tuple[str, str]:
-
     def _op():
         cand = with_retries(lambda: crossover(svg_a, svg_b), fallback=svg_a)
         return cand, "Local crossover"
@@ -238,7 +237,6 @@ def mutate_with_micro_search(
     orig_img_fast: Image.Image,
     num_trials: int = 15,
 ) -> tuple[str, str]:
-
     def _op():
         roll = random.random()
         if roll < 0.25:

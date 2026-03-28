@@ -5,8 +5,8 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+from svgizer.formats.models import VectorStatePayload
 from svgizer.search import SearchNode
-from svgizer.svg.adapter import SvgStatePayload
 
 log = logging.getLogger(__name__)
 
@@ -14,19 +14,21 @@ log = logging.getLogger(__name__)
 class FileStorageAdapter:
     def __init__(
         self,
-        output_svg_path: str,
+        output_path: str,
+        file_extension: str = ".svg",
         resume: bool = False,
         img_dims: tuple[int, int] = (512, 512),
         openai_image_long_side: int = 512,
     ):
-        self.output_svg_path = Path(output_svg_path)
+        self.output_path = Path(output_path)
+        self.file_extension = file_extension
         self.resume = resume
         self.img_dims = img_dims
         self.openai_image_long_side = openai_image_long_side
         self._max_id = 0
 
-        self.base_name = self.output_svg_path.stem
-        self.project_dir = self.output_svg_path.parent / self.base_name
+        self.base_name = self.output_path.stem
+        self.project_dir = self.output_path.parent / self.base_name
         self.runs_dir = self.project_dir / "runs"
 
         self.current_run_dir: Path | None = None
@@ -72,10 +74,12 @@ class FileStorageAdapter:
 
         log.info(f"Loading nodes to resume from latest run: {latest_run.name}")
 
-        file_pattern = re.compile(r"^([0-9.]+)_(\d+)\.svg$")
+        ext = re.escape(self.file_extension)
+        file_pattern = re.compile(rf"^([0-9.]+)_(\d+){ext}$")
         parsed_files = []
 
-        for file_path in target_nodes_dir.glob("*.svg"):
+        glob_pattern = f"*{self.file_extension}"
+        for file_path in target_nodes_dir.glob(glob_pattern):
             match = file_pattern.match(file_path.name)
             node_id = int(match.group(2)) if match else self._max_id + 1
 
@@ -93,7 +97,7 @@ class FileStorageAdapter:
 
         return sorted(resumed_data, key=lambda x: x[0])
 
-    def save_node(self, node: SearchNode[SvgStatePayload]) -> None:
+    def save_node(self, node: SearchNode[VectorStatePayload]) -> None:
         if self.nodes_dir is None or self.lineage_csv is None:
             return
 
@@ -101,13 +105,13 @@ class FileStorageAdapter:
 
         base_fn = f"{node.score:.6f}_{node.id}"
 
-        if node.state.payload.svg:
-            svg_path = self.nodes_dir / f"{base_fn}.svg"
-            svg_path.write_text(node.state.payload.svg, encoding="utf-8")
+        if node.state.payload.content:
+            content_path = self.nodes_dir / f"{base_fn}{self.file_extension}"
+            content_path.write_text(node.state.payload.content, encoding="utf-8")
 
-        svg_md5 = (
-            hashlib.md5(node.state.payload.svg.encode()).hexdigest()
-            if node.state.payload.svg
+        content_md5 = (
+            hashlib.md5(node.state.payload.content.encode()).hexdigest()
+            if node.state.payload.content
             else ""
         )
         exists = self.lineage_csv.is_file()
@@ -123,7 +127,7 @@ class FileStorageAdapter:
                         "score",
                         "complexity",
                         "summary",
-                        "svg_md5",
+                        "content_md5",
                     ]
                 )
             writer.writerow(
@@ -135,6 +139,6 @@ class FileStorageAdapter:
                     f"{node.score:.6f}",
                     f"{node.complexity:.0f}",
                     node.state.payload.change_summary or "",
-                    svg_md5,
+                    content_md5,
                 ]
             )

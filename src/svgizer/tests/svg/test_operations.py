@@ -3,7 +3,7 @@ import xml.etree.ElementTree as ET
 import pytest
 from PIL import Image
 
-from svgizer.svg.operations import (
+from svgizer.formats.svg.operations import (
     crossover,
     crossover_with_micro_search,
     mutate_drop_style_property,
@@ -294,6 +294,7 @@ def test_mutate_with_micro_search():
 # ---------------------------------------------------------------------------
 # mutate_drop_style_property
 # ---------------------------------------------------------------------------
+
 
 SVG_STYLED = (
     f'<svg xmlns="{NS}"><rect style="fill:red; stroke:blue; opacity:0.5"/></svg>'

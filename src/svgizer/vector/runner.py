@@ -2,19 +2,21 @@ import concurrent.futures
 import io
 import logging
 import os
-from typing import TYPE_CHECKING
+import threading
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from svgizer.dashboard import Dashboard
+    from svgizer.formats.base import FormatPlugin
     from svgizer.search.stats import SearchStats
 
 from PIL import Image
 
+from svgizer.formats.models import VectorStatePayload
 from svgizer.image_utils import (
     downscale_png_bytes,
     make_preview_data_url,
     png_bytes_to_data_url,
-    rasterize_svg_to_png_bytes,
 )
 from svgizer.score import ScorerType, get_scorer
 from svgizer.score.complexity import visual_complexity
@@ -32,9 +34,9 @@ from svgizer.search import (
 from svgizer.search.collector import StatCollector
 from svgizer.search.diversity import simhash
 from svgizer.search.nsga import crowding_distance, non_dominated_sort
-from svgizer.svg.adapter import SvgStatePayload, SvgStrategyAdapter
-from svgizer.svg.worker import worker_loop
 from svgizer.utils import setup_logger
+from svgizer.vector.adapter import VectorStrategyAdapter
+from svgizer.vector.worker import worker_loop
 
 log = logging.getLogger("main")
 
@@ -88,7 +90,7 @@ def _prefilter_nodes(
     return [prepped_nodes[i] for i in kept]
 
 
-def run_svg_search(
+def run_vector_search(
     image_path: str,
     storage: StorageAdapter,
     workers: int,
@@ -101,6 +103,7 @@ def run_svg_search(
     llm_provider: str,
     llm_model: str,
     reasoning: str,
+    format_plugin: "FormatPlugin",
     write_lineage: bool = True,
     epoch_patience: int | None = None,
     epoch_min_delta: float = 1e-4,
@@ -132,13 +135,33 @@ def run_svg_search(
     original_png_bytes = buf.getvalue()
 
     api_key = os.getenv(f"{llm_provider.upper()}_API_KEY")
-    scorer = get_scorer(
-        scorer_type,
-        provider_name=llm_provider,
-        api_key=api_key,
-        vision_model=vision_model,
-    )
-    scoring_ref = scorer.prepare_reference(original_img)
+
+    # Load the scoring model in the background so epoch-0 LLM seeding can run
+    # concurrently with (potentially slow) HuggingFace model downloads/init.
+    _scorer: list[Any] = []
+    _scoring_ref: list[Any] = []
+    _scorer_error: list[Exception] = []
+    scorer_ready = threading.Event()
+
+    def _init_scorer() -> None:
+        try:
+            s = get_scorer(
+                scorer_type,
+                provider_name=llm_provider,
+                api_key=api_key,
+                vision_model=vision_model,
+            )
+            ref = s.prepare_reference(original_img)
+            _scorer.append(s)
+            _scoring_ref.append(ref)
+            log.info("Scoring model ready.")
+        except Exception as exc:
+            _scorer_error.append(exc)
+            log.error(f"Scorer initialisation failed: {exc}")
+        finally:
+            scorer_ready.set()
+
+    threading.Thread(target=_init_scorer, daemon=True, name="ScorerInit").start()
 
     initial_nodes = []
     current_new_id = 1
@@ -151,26 +174,26 @@ def run_svg_search(
 
         unique_items = []
         seen_sigs = set()
-        for old_id, svg_text in resumed_items:
-            sig = simhash(svg_text)
+        for old_id, content_text in resumed_items:
+            sig = simhash(content_text)
             if sig is not None:
                 if sig in seen_sigs:
                     log.debug(f"Skipping duplicate Node {old_id} during resume.")
                     continue
                 seen_sigs.add(sig)
-            unique_items.append((old_id, svg_text, sig))
+            unique_items.append((old_id, content_text, sig))
 
         log.info(f"Filtered to {len(unique_items)} unique nodes.")
 
         # Helper for threaded rasterization
         def _prep_resume_node(item):
-            old_id, svg_text, sig = item
-            png = rasterize_svg_to_png_bytes(
-                svg_text, out_w=original_w, out_h=original_h
+            old_id, content_text, sig = item
+            png = format_plugin.rasterize(
+                content_text, out_w=original_w, out_h=original_h
             )
             preview = make_preview_data_url(png, image_long_side)
             complexity = visual_complexity(png)
-            return old_id, svg_text, png, preview, complexity, sig
+            return old_id, content_text, png, preview, complexity, sig
 
         prepped_nodes = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
@@ -191,9 +214,15 @@ def run_svg_search(
             prepped_nodes = _prefilter_nodes(prepped_nodes, original_img, 2 * pool_size)
             log.info(f"Pre-filter done: {len(prepped_nodes)} nodes selected.")
 
-        for old_id, svg_text, png, preview, complexity, sig in prepped_nodes:
+        scorer_ready.wait()
+        if _scorer_error:
+            raise RuntimeError(
+                f"Scorer failed to initialise: {_scorer_error[0]}"
+            ) from _scorer_error[0]
+
+        for old_id, content_text, png, preview, complexity, sig in prepped_nodes:
             try:
-                new_score = scorer.score(scoring_ref, png)
+                new_score = _scorer[0].score(_scoring_ref[0], png)
 
                 imported_node = SearchNode(
                     score=new_score,
@@ -203,8 +232,8 @@ def run_svg_search(
                     signature=sig,
                     state=ChainState(
                         score=new_score,
-                        payload=SvgStatePayload(
-                            svg=svg_text,
+                        payload=VectorStatePayload(
+                            content=content_text,
                             raster_data_url=None,
                             raster_preview_data_url=preview,
                             change_summary=f"Imported from Node {old_id}",
@@ -264,7 +293,7 @@ def run_svg_search(
                 parent_id=0,
                 state=ChainState(
                     INVALID_SCORE,
-                    SvgStatePayload(None, None, None, None, None),
+                    VectorStatePayload(None, None, None, None, None),
                 ),
             )
         )
@@ -289,9 +318,9 @@ def run_svg_search(
     is_greedy = strategy_type == StrategyType.GREEDY
 
     if is_greedy:
-        base_strategy = GreedyHillClimbingStrategy[SvgStatePayload]()
+        base_strategy = GreedyHillClimbingStrategy[VectorStatePayload]()
     else:
-        base_strategy = NsgaStrategy[SvgStatePayload](
+        base_strategy = NsgaStrategy[VectorStatePayload](
             pool_size=pool_size,
             crossover_distance_threshold=10,
             epoch_diversity=epoch_diversity,
@@ -307,7 +336,7 @@ def run_svg_search(
     else:
         engine_pool_size = pool_size
         seed_target = pool_size // 10 if seeds == 0 else seeds
-        seeded = sum(1 for n in initial_nodes if n.state.payload.svg)
+        seeded = sum(1 for n in initial_nodes if n.state.payload.content)
         engine_seed_tasks = max(0, seed_target - seeded)
         engine_epoch_patience = epoch_patience
         engine_epoch_min_delta = epoch_min_delta
@@ -319,7 +348,7 @@ def run_svg_search(
                 f"(target={seed_target}, already seeded={seeded})"
             )
 
-    strategy = SvgStrategyAdapter(base_strategy, image_long_side, write_lineage)
+    strategy = VectorStrategyAdapter(base_strategy, image_long_side, write_lineage)
     engine = MultiprocessSearchEngine(
         workers=workers, strategy=strategy, storage=storage
     )
@@ -327,6 +356,7 @@ def run_svg_search(
     model_png = downscale_png_bytes(original_png_bytes, image_long_side)
 
     worker_params = {
+        "format_plugin": format_plugin,
         "image_data_url": png_bytes_to_data_url(model_png),
         "original_png_bytes": original_png_bytes,
         "original_w": original_w,
@@ -344,7 +374,12 @@ def run_svg_search(
     }
 
     def score_fn(res):
-        return scorer.score(scoring_ref, res.payload.raster_png)
+        scorer_ready.wait()
+        if _scorer_error:
+            raise RuntimeError(
+                f"Scorer failed to initialise: {_scorer_error[0]}"
+            ) from _scorer_error[0]
+        return _scorer[0].score(_scoring_ref[0], res.payload.raster_png)
 
     # Start workers before the dashboard enters so that subprocess spawn output
     # (which goes to the inherited stderr fd) doesn't disrupt Rich Live's cursor

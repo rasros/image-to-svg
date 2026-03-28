@@ -2,15 +2,15 @@ import csv
 
 import pytest
 
+from svgizer.formats.models import VectorStatePayload
 from svgizer.search import ChainState, SearchNode
-from svgizer.svg.adapter import SvgStatePayload
-from svgizer.svg.storage import FileStorageAdapter
+from svgizer.vector.storage import FileStorageAdapter
 
 
 @pytest.fixture
 def dummy_state() -> ChainState:
-    payload = SvgStatePayload(
-        svg="<svg><circle r='10'/></svg>",
+    payload = VectorStatePayload(
+        content="<svg><circle r='10'/></svg>",
         raster_data_url=None,
         raster_preview_data_url=None,
         change_summary="Fixed circle",
@@ -29,7 +29,7 @@ def dummy_node(dummy_state) -> SearchNode:
 
 def test_adapter_path_resolution(tmp_path):
     output_path = str(tmp_path / "somedir" / "result.svg")
-    adapter = FileStorageAdapter(output_svg_path=output_path)
+    adapter = FileStorageAdapter(output_path=output_path)
 
     assert adapter.base_name == "result"
     assert str(adapter.project_dir) == str(tmp_path / "somedir" / "result")
@@ -71,7 +71,7 @@ def test_save_node_and_lineage(tmp_path, dummy_node):
             "score",
             "complexity",
             "summary",
-            "svg_md5",
+            "content_md5",
         ]
         assert reader[1][0] == "42"
         assert reader[1][3] == "0"  # epoch
@@ -83,7 +83,9 @@ def test_save_node_and_lineage(tmp_path, dummy_node):
 
 
 def test_load_resume_nodes(tmp_path):
-    adapter = FileStorageAdapter(str(tmp_path / "resume_test.svg"), resume=True)
+    adapter = FileStorageAdapter(
+        str(tmp_path / "resume_test.svg"), resume=True, file_extension=".svg"
+    )
     adapter.initialize()
 
     valid_svg = '<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>'
@@ -96,7 +98,7 @@ def test_load_resume_nodes(tmp_path):
     nodes = adapter.load_resume_nodes()
 
     assert len(nodes) == 1
-    node_id, _svg_text = nodes[0]
+    node_id, _content_text = nodes[0]
     assert node_id == 15
     assert adapter.max_node_id == 15
 
