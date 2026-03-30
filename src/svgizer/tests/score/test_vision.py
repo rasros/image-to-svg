@@ -1,9 +1,10 @@
 import io
 
+import numpy as np
 import pytest
 from PIL import Image
 
-from svgizer.score.vision import VisionScorer
+from svgizer.score.vision import VisionScorer, _apply_hot_colormap
 
 
 class _TinyVisionScorer(VisionScorer):
@@ -110,3 +111,98 @@ def test_load_is_idempotent(scorer):
     s1 = scorer.score(ref1, _png("white"))
     s2 = scorer.score(ref2, _png("white"))
     assert s1 == pytest.approx(s2, abs=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# Patch embeddings and heatmap
+# ---------------------------------------------------------------------------
+
+
+def test_prepare_reference_includes_patch_embeddings(scorer):
+    ref_img = Image.new("RGB", (32, 32), color="red")
+    ref = scorer.prepare_reference(ref_img)
+    # Tiny model has image_size=16, patch_size=16 → 1×1 grid (1 patch)
+    assert ref.patch_embeddings is not None
+    assert ref.patch_embeddings.shape[0] == 1  # 1 patch
+    assert ref.grid_hw == (1, 1)
+
+
+def test_patch_embeddings_are_unit_norm(scorer):
+    ref_img = Image.new("RGB", (32, 32), color="blue")
+    ref = scorer.prepare_reference(ref_img)
+    assert ref.patch_embeddings is not None
+    norms = ref.patch_embeddings.norm(dim=-1)
+    assert norms == pytest.approx(1.0, abs=1e-5)
+
+
+def test_diff_heatmap_returns_valid_png(scorer):
+    ref_img = Image.new("RGB", (32, 32), color="red")
+    ref = scorer.prepare_reference(ref_img)
+    png = scorer.diff_heatmap(ref, _png("blue"), long_side=64)
+    assert png is not None
+    img = Image.open(io.BytesIO(png))
+    assert img.mode == "RGB"
+    assert img.size[0] > 0 and img.size[1] > 0
+
+
+def test_diff_heatmap_identical_images_are_dark(scorer):
+    ref_img = Image.new("RGB", (32, 32), color="green")
+    ref = scorer.prepare_reference(ref_img)
+    png = scorer.diff_heatmap(ref, _png("green"), long_side=64)
+    assert png is not None
+    arr = np.array(Image.open(io.BytesIO(png)))
+    # Identical images → near-zero cosine distance → near-black heatmap
+    assert arr.mean() < 30.0
+
+
+def test_diff_heatmap_different_images_are_brighter(scorer):
+    ref_img = Image.new("RGB", (32, 32), color="red")
+    ref = scorer.prepare_reference(ref_img)
+    same_png = scorer.diff_heatmap(ref, _png("red"), long_side=64)
+    diff_png = scorer.diff_heatmap(ref, _png("blue"), long_side=64)
+    assert same_png is not None and diff_png is not None
+    mean_same = np.array(Image.open(io.BytesIO(same_png))).mean()
+    mean_diff = np.array(Image.open(io.BytesIO(diff_png))).mean()
+    assert mean_diff >= mean_same
+
+
+def test_diff_heatmap_respects_long_side(scorer):
+    ref_img = Image.new("RGB", (32, 32), color="red")
+    ref = scorer.prepare_reference(ref_img)
+    png = scorer.diff_heatmap(ref, _png("blue"), long_side=32)
+    assert png is not None
+    img = Image.open(io.BytesIO(png))
+    assert max(img.size) == 32
+
+
+# ---------------------------------------------------------------------------
+# Hot colormap
+# ---------------------------------------------------------------------------
+
+
+def test_hot_colormap_zero_is_black():
+    arr = np.zeros((1, 1), dtype=np.float32)
+    rgb = _apply_hot_colormap(arr)
+    assert rgb[0, 0].tolist() == [0, 0, 0]
+
+
+def test_hot_colormap_one_is_white():
+    arr = np.ones((1, 1), dtype=np.float32)
+    rgb = _apply_hot_colormap(arr)
+    assert rgb[0, 0].tolist() == [255, 255, 255]
+
+
+def test_hot_colormap_third_is_red():
+    arr = np.full((1, 1), 1.0 / 3.0, dtype=np.float32)
+    rgb = _apply_hot_colormap(arr)
+    r, g, b = rgb[0, 0]
+    assert r == 255
+    assert g < 10
+    assert b < 10
+
+
+def test_hot_colormap_output_shape_matches_input():
+    arr = np.random.rand(10, 20).astype(np.float32)
+    rgb = _apply_hot_colormap(arr)
+    assert rgb.shape == (10, 20, 3)
+    assert rgb.dtype == np.uint8
