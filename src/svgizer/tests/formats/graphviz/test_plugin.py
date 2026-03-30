@@ -195,3 +195,76 @@ def test_rasterize_fast_returns_none_on_invalid():
     plugin = GraphvizPlugin()
     result = plugin.rasterize_fast("not dot code >>>", long_side=64)
     assert result is None
+
+
+# ── LLM integration ───────────────────────────────────────────────────────────
+
+
+@pytest.mark.llm
+@pytest.mark.skipif(not _DOT_AVAILABLE, reason="graphviz system binary not installed")
+def test_llm_dot_generation_produces_valid_dot():
+    import io
+
+    from PIL import Image
+
+    from svgizer.formats.graphviz.prompts import build_dot_gen_prompt
+    from svgizer.llm import LLMConfig, get_provider
+
+    img = Image.new("RGB", (32, 32), color="blue")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    import base64
+
+    image_data_url = (
+        f"data:image/png;base64,{base64.b64encode(buf.getvalue()).decode()}"
+    )
+
+    client = get_provider("openai")
+    prompt = build_dot_gen_prompt(
+        image_data_url,
+        node_index=1,
+        dot_prev=None,
+        rasterized_dot_data_url=None,
+        goal=None,
+        diff_data_url=None,
+    )
+    raw = client.generate(prompt, LLMConfig(model="gpt-5.4-nano"))
+    dot = GraphvizPlugin().extract_from_llm(raw)
+    valid, err = GraphvizPlugin().validate(dot)
+    assert valid, f"LLM did not produce valid DOT: {err}\nRaw: {raw[:200]}"
+
+
+@pytest.mark.llm
+@pytest.mark.skipif(not _DOT_AVAILABLE, reason="graphviz system binary not installed")
+def test_llm_dot_refinement_produces_valid_dot():
+    import io
+
+    from PIL import Image
+
+    from svgizer.formats.graphviz.prompts import build_dot_gen_prompt
+    from svgizer.llm import LLMConfig, get_provider
+
+    img = Image.new("RGB", (32, 32), color="red")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    import base64
+
+    image_data_url = (
+        f"data:image/png;base64,{base64.b64encode(buf.getvalue()).decode()}"
+    )
+
+    plugin = GraphvizPlugin()
+    parent_dot = 'digraph G { A -> B [label="step"] }'
+    client = get_provider("openai")
+    prompt = build_dot_gen_prompt(
+        image_data_url,
+        node_index=2,
+        dot_prev=parent_dot,
+        rasterized_dot_data_url=None,
+        goal="Add a node C connected to B.",
+        diff_data_url=None,
+    )
+    raw = client.generate(prompt, LLMConfig(model="gpt-5.4-nano"))
+    dot = plugin.apply_edit(parent_dot, raw)
+    valid, err = plugin.validate(dot)
+    assert valid, f"LLM refinement did not produce valid DOT: {err}\nRaw: {raw[:200]}"
