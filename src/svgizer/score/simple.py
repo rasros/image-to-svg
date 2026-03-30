@@ -7,7 +7,7 @@ from PIL import Image
 from PIL.Image import Resampling
 
 from svgizer.image_utils import resize_long_side
-from svgizer.score.base import Scorer
+from svgizer.score.base import DEFAULT_CONFIG, Scorer
 from svgizer.score.utils import lab_l1
 
 log = logging.getLogger(__name__)
@@ -19,11 +19,8 @@ class SimpleReference:
 
 
 class SimpleFallbackScorer(Scorer):
-    def __init__(self, target_long_side: int = 256):
-        self.target_long_side = target_long_side
-
     def prepare_reference(self, original_rgb: Image.Image) -> SimpleReference:
-        ref_small = resize_long_side(original_rgb, self.target_long_side)
+        ref_small = resize_long_side(original_rgb, DEFAULT_CONFIG.target_long_side)
         return SimpleReference(image=ref_small)
 
     def score(self, reference: SimpleReference, candidate_png: bytes) -> float:

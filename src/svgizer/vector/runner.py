@@ -114,7 +114,6 @@ def run_vector_search(
     format_plugin: "FormatPlugin",
     write_lineage: bool = True,
     save_raster: bool = False,
-    save_heatmap: bool = False,
     epoch_patience: int | None = None,
     epoch_min_delta: float = 1e-4,
     llm_rate: float = 0.2,
@@ -251,7 +250,7 @@ def run_vector_search(
     )
 
     strategy = VectorStrategyAdapter(
-        base_strategy, image_long_side, write_lineage, save_raster, save_heatmap
+        base_strategy, image_long_side, write_lineage, save_raster
     )
     engine = MultiprocessSearchEngine(
         workers=workers, strategy=strategy, storage=storage

@@ -6,7 +6,7 @@ from svgizer.score.simple import SimpleFallbackScorer
 
 
 def test_simple_fallback_scorer_identical():
-    scorer = SimpleFallbackScorer(target_long_side=64)
+    scorer = SimpleFallbackScorer()
     img_red = Image.new("RGB", (100, 100), color="red")
 
     ref = scorer.prepare_reference(img_red)
@@ -19,7 +19,7 @@ def test_simple_fallback_scorer_identical():
 
 
 def test_simple_fallback_scorer_different():
-    scorer = SimpleFallbackScorer(target_long_side=64)
+    scorer = SimpleFallbackScorer()
     img_red = Image.new("RGB", (100, 100), color="red")
     ref = scorer.prepare_reference(img_red)
 
@@ -34,7 +34,7 @@ def test_simple_fallback_scorer_different():
 
 
 def test_simple_fallback_scorer_handles_size_mismatch():
-    scorer = SimpleFallbackScorer(target_long_side=64)
+    scorer = SimpleFallbackScorer()
     img_ref = Image.new("RGB", (200, 200), color="green")
     ref = scorer.prepare_reference(img_ref)
 
@@ -48,7 +48,7 @@ def test_simple_fallback_scorer_handles_size_mismatch():
 
 
 def test_simple_fallback_scorer_invalid_data_returns_max_diff():
-    scorer = SimpleFallbackScorer(target_long_side=64)
+    scorer = SimpleFallbackScorer()
     img_red = Image.new("RGB", (10, 10), color="red")
     ref = scorer.prepare_reference(img_red)
 

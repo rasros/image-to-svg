@@ -18,16 +18,12 @@ class FileStorageAdapter:
         output_path: str,
         file_extension: str = ".svg",
         resume: bool = False,
-        img_dims: tuple[int, int] = (512, 512),
-        image_long_side: int = 512,
         save_raster: bool = False,
         save_heatmap: bool = False,
     ):
         self.output_path = Path(output_path)
         self.file_extension = file_extension
         self.resume = resume
-        self.img_dims = img_dims
-        self.image_long_side = image_long_side
         self.save_raster = save_raster
         self.save_heatmap = save_heatmap
         self._max_id = 0

@@ -1,11 +1,10 @@
-import io
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
 
-from PIL import Image, ImageChops
+from PIL import Image
 
-from svgizer.image_utils import resize_long_side
+from svgizer.image_utils import pixel_diff_png
 
 
 class Scorer(ABC):
@@ -16,7 +15,7 @@ class Scorer(ABC):
     def score(self, reference: Any, candidate_png: bytes) -> float: ...
 
     def diff_heatmap(
-        self, reference: Any, candidate_png: bytes, long_side: int = 256
+        self, reference: Any, candidate_png: bytes, long_side: int
     ) -> bytes | None:
         """Pixel-based diff heatmap (brightness-boosted RGB difference).
 
@@ -26,20 +25,7 @@ class Scorer(ABC):
         ref_img = getattr(reference, "image", None)
         if ref_img is None:
             return None
-
-        cand = Image.open(io.BytesIO(candidate_png)).convert("RGB")
-        if cand.size != ref_img.size:
-            cand = cand.resize(ref_img.size, resample=Image.Resampling.BILINEAR)
-
-        diff = ImageChops.difference(ref_img, cand)
-        diff = diff.point(lambda p: min(255, p * 3))
-
-        if long_side > 0:
-            diff = resize_long_side(diff, long_side)
-
-        buf = io.BytesIO()
-        diff.save(buf, format="PNG")
-        return buf.getvalue()
+        return pixel_diff_png(ref_img, candidate_png, long_side)
 
 
 @dataclass(frozen=True)

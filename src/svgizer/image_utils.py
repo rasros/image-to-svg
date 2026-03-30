@@ -5,6 +5,8 @@ import cairosvg
 from PIL import Image, ImageChops
 from PIL.Image import Resampling
 
+DIFF_BRIGHTNESS_BOOST = 3
+
 
 def resize_long_side(im: Image.Image, long_side: int) -> Image.Image:
     w, h = im.size
@@ -70,25 +72,20 @@ def make_preview_data_url(full_png: bytes, image_long_side: int) -> str:
     return png_bytes_to_data_url(preview_png)
 
 
+def pixel_diff_png(ref_img: Image.Image, cand_png: bytes, long_side: int) -> bytes:
+    """Pixel-wise RGB difference with brightness boost, returned as PNG bytes."""
+    cand = Image.open(io.BytesIO(cand_png)).convert("RGB")
+    if cand.size != ref_img.size:
+        cand = cand.resize(ref_img.size, resample=Resampling.BILINEAR)
+    diff = ImageChops.difference(ref_img, cand)
+    diff = diff.point(lambda p: min(255, p * DIFF_BRIGHTNESS_BOOST))
+    diff = resize_long_side(diff, long_side)
+    buf = io.BytesIO()
+    diff.save(buf, format="PNG")
+    return buf.getvalue()
+
+
 def generate_diff_data_url(ref_bytes: bytes, cand_bytes: bytes, long_side: int) -> str:
-    """
-    Generates a high-contrast diff map between the reference and the candidate.
-    """
+    """Generates a high-contrast diff map between the reference and the candidate."""
     ref_img = Image.open(io.BytesIO(ref_bytes)).convert("RGB")
-    cand_img = Image.open(io.BytesIO(cand_bytes)).convert("RGB")
-
-    if ref_img.size != cand_img.size:
-        cand_img = cand_img.resize(ref_img.size, resample=Resampling.BILINEAR)
-
-    diff = ImageChops.difference(ref_img, cand_img)
-
-    def _boost_brightness(p: int) -> int:
-        return min(255, p * 3)
-
-    # Boost brightness of the diff to make errors obvious to the vision model
-    diff = diff.point(_boost_brightness)
-
-    diff_small = resize_long_side(diff, long_side)
-    out = io.BytesIO()
-    diff_small.save(out, format="PNG")
-    return png_bytes_to_data_url(out.getvalue())
+    return png_bytes_to_data_url(pixel_diff_png(ref_img, cand_bytes, long_side))

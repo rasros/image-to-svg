@@ -27,6 +27,7 @@ def _make_result(
     content: str = "<svg/>",
     raster_png: bytes | None = None,
     preview_data_url: str | None = None,
+    heatmap_png: bytes | None = None,
 ) -> Result:
     return Result(
         task_id=1,
@@ -39,6 +40,7 @@ def _make_result(
             raster_png=raster_png,
             origin="test",
             raster_preview_data_url=preview_data_url,
+            heatmap_png=heatmap_png,
         ),
         content=content,
     )
@@ -104,3 +106,32 @@ def test_create_new_state_no_lineage_raster_data_url_is_none():
     result = _make_result(raster_png=_make_png())
     state = adapter.create_new_state(result)
     assert state.payload.raster_data_url is None
+
+
+def test_create_new_state_heatmap_data_url_set_when_png_present():
+    adapter = _make_adapter()
+    result = _make_result(heatmap_png=_make_png("blue"))
+    state = adapter.create_new_state(result)
+    assert state.payload.heatmap_data_url is not None
+    assert state.payload.heatmap_data_url.startswith("data:image/png;base64,")
+
+
+def test_create_new_state_heatmap_data_url_none_when_no_png():
+    adapter = _make_adapter()
+    result = _make_result(heatmap_png=None)
+    state = adapter.create_new_state(result)
+    assert state.payload.heatmap_data_url is None
+
+
+def test_create_new_state_heatmap_independent_of_save_raster():
+    # heatmap_data_url is always stored in state (for LLM feedback); save_raster
+    # controls raster disk saving only and must not suppress heatmap.
+    adapter = VectorStrategyAdapter(
+        base_strategy=GreedyHillClimbingStrategy(),
+        image_long_side=64,
+        write_lineage=False,
+        save_raster=False,
+    )
+    result = _make_result(heatmap_png=_make_png("green"))
+    state = adapter.create_new_state(result)
+    assert state.payload.heatmap_data_url is not None

@@ -158,7 +158,7 @@ class VisionScorer(Scorer):
         self,
         reference: VisionReference,
         candidate_png: bytes,
-        long_side: int = 256,
+        long_side: int,
     ) -> bytes | None:
         """Generate a perceptual diff heatmap using SigLIP patch embeddings.
 

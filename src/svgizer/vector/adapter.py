@@ -11,7 +11,6 @@ class VectorStrategyAdapter:
     image_long_side: int
     write_lineage: bool
     save_raster: bool
-    save_heatmap: bool
 
     def __init__(
         self,
@@ -19,13 +18,11 @@ class VectorStrategyAdapter:
         image_long_side: int,
         write_lineage: bool,
         save_raster: bool = False,
-        save_heatmap: bool = False,
     ):
         self.base_strategy = base_strategy
         self.image_long_side = image_long_side
         self.write_lineage = write_lineage
         self.save_raster = save_raster
-        self.save_heatmap = save_heatmap
 
     @property
     def top_k_count(self) -> int:
