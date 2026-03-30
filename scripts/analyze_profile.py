@@ -31,7 +31,7 @@ def shorten_path(path: str) -> str:
 
 def top_frames(
     profile: dict, shared_frames: list, n: int = 20
-) -> list[tuple[int, int, str, str, int | str]]:
+) -> tuple[list[tuple[int, int, str, str, int | str]], float]:
     samples = profile.get("samples", [])
     weights = profile.get("weights", [])
     total = sum(weights)

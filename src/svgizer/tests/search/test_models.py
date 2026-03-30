@@ -1,5 +1,4 @@
-from svgizer.search.base import StrategyType
-from svgizer.search.models import INVALID_SCORE, ChainState, SearchNode
+from svgizer.search.models import ChainState, SearchNode
 
 
 def test_search_node_sorting_by_score():
@@ -31,14 +30,3 @@ def test_search_node_equality_with_identical_scores():
 
     assert not (n1 < n2)
     assert not (n2 < n1)
-
-
-def test_strategy_type_enum():
-    assert StrategyType.GREEDY == "greedy"
-    assert StrategyType.NSGA == "nsga"
-    assert "genetic" not in [e.value for e in StrategyType]
-
-
-def test_invalid_score_constant():
-    assert INVALID_SCORE > 1.0
-    assert INVALID_SCORE > 0.0

@@ -78,7 +78,8 @@ def pixel_diff_png(ref_img: Image.Image, cand_png: bytes, long_side: int) -> byt
     if cand.size != ref_img.size:
         cand = cand.resize(ref_img.size, resample=Resampling.BILINEAR)
     diff = ImageChops.difference(ref_img, cand)
-    diff = diff.point(lambda p: min(255, p * DIFF_BRIGHTNESS_BOOST))
+    lut = [min(255, i * DIFF_BRIGHTNESS_BOOST) for i in range(256)]
+    diff = diff.point(lut * len(diff.getbands()))
     diff = resize_long_side(diff, long_side)
     buf = io.BytesIO()
     diff.save(buf, format="PNG")

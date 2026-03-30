@@ -45,8 +45,7 @@ def build_dot_gen_prompt(
 
     system_text = (
         "Write Graphviz DOT code that, when rendered, visually matches the target"
-        " image.\n\n"
-        + _DOT_SYNTAX_RULES
+        " image.\n\n" + _DOT_SYNTAX_RULES
     )
 
     if not is_edit:
