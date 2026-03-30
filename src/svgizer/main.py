@@ -6,6 +6,7 @@ from svgizer.cli import parse_args
 from svgizer.dashboard import Dashboard
 from svgizer.formats.graphviz.plugin import GraphvizPlugin
 from svgizer.formats.svg.plugin import SvgPlugin
+from svgizer.formats.typst.plugin import TypstPlugin
 from svgizer.search.base import StrategyType
 from svgizer.search.stats import SearchStats
 from svgizer.utils import setup_logger
@@ -55,7 +56,12 @@ def main():
         logger.debug(f"  {key}: {val}")
     logger.debug("==========================")
 
-    plugin = GraphvizPlugin() if args.format == "graphviz" else SvgPlugin()
+    if args.format == "graphviz":
+        plugin = GraphvizPlugin()
+    elif args.format == "typst":
+        plugin = TypstPlugin()
+    else:
+        plugin = SvgPlugin()
 
     stats = SearchStats(
         strategy_name=args.strategy,

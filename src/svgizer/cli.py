@@ -227,7 +227,7 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--format",
         type=str,
-        choices=["svg", "graphviz"],
+        choices=["svg", "graphviz", "typst"],
         default="svg",
         help="Output vector format to generate (default: svg).",
     )

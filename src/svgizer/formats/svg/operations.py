@@ -36,7 +36,26 @@ _NUMERIC_ATTRS = frozenset(
     }
 )
 
+_COLOR_ATTRS = frozenset({"fill", "stroke", "color", "stop-color"})
+
+_SHAPE_TAGS = frozenset(
+    {"rect", "circle", "ellipse", "line", "path", "polygon", "polyline"}
+)
+
+_NAMED_SVG_COLORS = [
+    "red", "blue", "green", "yellow", "orange", "purple", "cyan",
+    "magenta", "pink", "brown", "black", "white", "gray", "navy",
+    "teal", "olive", "coral", "salmon", "gold", "indigo",
+    "lime", "aqua", "maroon", "silver", "crimson", "turquoise",
+]
+
 _NUM_RE = re.compile(r"^(-?\d+(?:\.\d+)?)([a-z%]*)$")
+_PATH_NUM_RE = re.compile(r"(-?\d+(?:\.\d+)?)")
+_HEX_COLOR_RE = re.compile(r"#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})")
+
+
+def _local_tag(el: ET.Element) -> str:
+    return el.tag.split("}")[-1]
 
 
 def _is_valid_svg(svg: str) -> bool:
@@ -211,6 +230,141 @@ def mutate_numeric(svg: str) -> str:
         return svg
 
 
+def mutate_color(svg: str) -> str:
+    """Tweak a fill or stroke color — nudge hex channels or swap named color."""
+    try:
+        root = ET.fromstring(svg)
+
+        # Collect (elem, source, key, current_value) for every color reference
+        candidates: list[tuple[ET.Element, str, str, str]] = []
+        for elem in root.iter():
+            for attr in list(elem.attrib):
+                bare = attr.split("}")[-1]
+                if bare in _COLOR_ATTRS:
+                    val = elem.attrib[attr]
+                    if val and val not in ("none", "inherit", "transparent"):
+                        candidates.append((elem, "attr", attr, val))
+            style = elem.get("style", "")
+            for prop in style.split(";"):
+                prop = prop.strip()
+                if ":" not in prop:
+                    continue
+                k, v = prop.split(":", 1)
+                k, v = k.strip(), v.strip()
+                if k in _COLOR_ATTRS and v not in ("none", "inherit", "transparent"):
+                    candidates.append((elem, "style", k, v))
+
+        if not candidates:
+            return svg
+
+        elem, source, key, val = random.choice(candidates)
+
+        hex_match = _HEX_COLOR_RE.search(val)
+        if hex_match:
+            h = hex_match.group(1)
+            if len(h) == 3:
+                h = h[0] * 2 + h[1] * 2 + h[2] * 2
+            r = max(0, min(255, int(h[0:2], 16) + random.randint(-60, 60)))
+            g = max(0, min(255, int(h[2:4], 16) + random.randint(-60, 60)))
+            b = max(0, min(255, int(h[4:6], 16) + random.randint(-60, 60)))
+            new_color = f"#{r:02x}{g:02x}{b:02x}"
+        else:
+            new_color = random.choice(_NAMED_SVG_COLORS)
+
+        if source == "attr":
+            elem.set(key, new_color)
+        else:
+            props: dict[str, str] = {}
+            for prop in elem.get("style", "").split(";"):
+                prop = prop.strip()
+                if ":" in prop:
+                    pk, pv = prop.split(":", 1)
+                    props[pk.strip()] = pv.strip()
+            props[key] = new_color
+            elem.set("style", "; ".join(f"{pk}:{pv}" for pk, pv in props.items()))
+
+        ET.register_namespace("", SVG_NS)
+        return ET.tostring(root, encoding="unicode", method="xml")
+    except ET.ParseError:
+        return svg
+
+
+def mutate_stroke(svg: str) -> str:
+    """Add, remove, or change stroke on a random shape element."""
+    try:
+        root = ET.fromstring(svg)
+        shapes = [el for el in root.iter() if _local_tag(el) in _SHAPE_TAGS]
+        if not shapes:
+            return svg
+
+        el = random.choice(shapes)
+        has_stroke = el.get("stroke") not in (None, "none", "")
+
+        op = random.choice(["add", "remove", "change"])
+        if op == "remove" and has_stroke:
+            el.set("stroke", "none")
+        elif op in ("add", "change"):
+            el.set("stroke", random.choice(_NAMED_SVG_COLORS))
+            if not el.get("stroke-width"):
+                el.set("stroke-width", str(random.choice([1, 2, 3])))
+
+        ET.register_namespace("", SVG_NS)
+        return ET.tostring(root, encoding="unicode", method="xml")
+    except ET.ParseError:
+        return svg
+
+
+def mutate_path(svg: str) -> str:
+    """Nudge one numeric coordinate in a path 'd' attribute."""
+    try:
+        root = ET.fromstring(svg)
+        paths = [el for el in root.iter() if el.get("d")]
+        if not paths:
+            return svg
+
+        el = random.choice(paths)
+        d = el.get("d", "")
+        nums = list(_PATH_NUM_RE.finditer(d))
+        if not nums:
+            return svg
+
+        m = random.choice(nums)
+        val = float(m.group(1))
+        # Use a proportional nudge (±15%) with a minimum of ±2px
+        magnitude = max(2.0, abs(val) * 0.15)
+        new_val = val + random.uniform(-magnitude, magnitude)
+        new_str = f"{new_val:.1f}".rstrip("0").rstrip(".")
+        el.set("d", d[: m.start()] + new_str + d[m.end() :])
+
+        ET.register_namespace("", SVG_NS)
+        return ET.tostring(root, encoding="unicode", method="xml")
+    except ET.ParseError:
+        return svg
+
+
+def mutate_reorder(svg: str) -> str:
+    """Swap two adjacent sibling elements to change z-order."""
+    try:
+        root = ET.fromstring(svg)
+        candidates = [el for el in root.iter() if len(list(el)) >= 2]
+        if not candidates:
+            return svg
+
+        parent = random.choice(candidates)
+        children = list(parent)
+        i = random.randrange(len(children) - 1)
+        children[i], children[i + 1] = children[i + 1], children[i]
+        for child in list(parent):
+            parent.remove(child)
+        for child in children:
+            parent.append(child)
+
+        ET.register_namespace("", SVG_NS)
+        return ET.tostring(root, encoding="unicode", method="xml")
+    except ET.ParseError:
+        return svg
+
+
 def crossover_with_micro_search(
     svg_a: str,
     svg_b: str,
@@ -235,21 +389,23 @@ def mutate_with_micro_search(
     orig_img_fast: Image.Image,
     num_trials: int = 15,
 ) -> tuple[str, str]:
-    def _op():
-        roll = random.random()
-        if roll < 0.25:
-            cand = with_retries(
-                lambda: mutate_remove_node(parent_svg), fallback=parent_svg
-            )
-            return cand, "Mutation: removed node"
-        if roll < 0.75:
-            cand = with_retries(lambda: mutate_numeric(parent_svg), fallback=parent_svg)
-            return cand, "Mutation: tweaked value"
+    _ops = [
+        (mutate_color, "Mutation: color tweak", 0.25),
+        (mutate_numeric, "Mutation: numeric tweak", 0.20),
+        (mutate_path, "Mutation: path nudge", 0.15),
+        (mutate_remove_node, "Mutation: removed node", 0.15),
+        (mutate_stroke, "Mutation: stroke change", 0.10),
+        (mutate_reorder, "Mutation: reordered elements", 0.10),
+        (mutate_drop_style_property, "Mutation: dropped style property", 0.05),
+    ]
+    fns, labels, weights = zip(*_ops)
 
-        cand = with_retries(
-            lambda: mutate_drop_style_property(parent_svg), fallback=parent_svg
-        )
-        return cand, "Mutation: dropped style property"
+    def _op():
+        fn, label = random.choices(list(zip(fns, labels)), weights=list(weights), k=1)[
+            0
+        ]
+        cand = with_retries(lambda: fn(parent_svg), fallback=parent_svg)
+        return cand, label
 
     return with_micro_search(
         _op,
