@@ -121,7 +121,7 @@ def crossover_with_micro_search(
         idx_a = random.randint(1, len(blocks_a))
         block_b = random.choice(blocks_b)
 
-        candidate_blocks = blocks_a[:idx_a] + [block_b] + blocks_a[idx_a:]
+        candidate_blocks = [*blocks_a[:idx_a], block_b, *blocks_a[idx_a:]]
         candidate = "\n\n".join(candidate_blocks)
 
         png = _rasterize_typst(candidate)

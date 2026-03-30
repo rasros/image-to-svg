@@ -1,12 +1,7 @@
+import importlib.util
+
 import pytest
 from PIL import Image
-
-try:
-    import typst
-
-    _TYPST_AVAILABLE = True
-except ImportError:
-    _TYPST_AVAILABLE = False
 
 from svgizer.formats.typst.operations import (
     _random_block_swap,
@@ -14,6 +9,8 @@ from svgizer.formats.typst.operations import (
     crossover_with_micro_search,
     mutate_with_micro_search,
 )
+
+_TYPST_AVAILABLE = importlib.util.find_spec("typst") is not None
 
 _TYPST_CODE = """#set page(width: auto, height: auto, margin: 0pt)
 #rect(width: 100pt, height: 50pt, fill: red)

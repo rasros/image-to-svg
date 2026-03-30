@@ -1,14 +1,15 @@
+import importlib.util
+
 import pytest
 
 from svgizer.formats.typst.plugin import TypstPlugin
 
-try:
-    import typst
-    _TYPST_AVAILABLE = True
-except ImportError:
-    _TYPST_AVAILABLE = False
+_TYPST_AVAILABLE = importlib.util.find_spec("typst") is not None
 
-_VALID_TYPST = "#set page(width: auto, height: auto, margin: 0pt)\n#rect(width: 10pt, height: 10pt, fill: red)"
+_VALID_TYPST = (
+    "#set page(width: auto, height: auto, margin: 0pt)\n"
+    "#rect(width: 10pt, height: 10pt, fill: red)"
+)
 
 
 def test_extract_fenced_typst_block():
@@ -66,6 +67,7 @@ def test_rasterize_returns_png_bytes():
 @pytest.mark.skipif(not _TYPST_AVAILABLE, reason="typst package not installed")
 def test_rasterize_output_dimensions():
     import io
+
     from PIL import Image
 
     plugin = TypstPlugin()
@@ -92,8 +94,9 @@ def test_rasterize_fast_returns_none_on_invalid():
 @pytest.mark.llm
 @pytest.mark.skipif(not _TYPST_AVAILABLE, reason="typst package not installed")
 def test_llm_typst_generation_produces_valid_typst():
-    import io
     import base64
+    import io
+
     from PIL import Image
 
     from svgizer.formats.typst.prompts import build_typst_gen_prompt
@@ -102,7 +105,8 @@ def test_llm_typst_generation_produces_valid_typst():
     img = Image.new("RGB", (32, 32), color="blue")
     buf = io.BytesIO()
     img.save(buf, format="PNG")
-    image_data_url = f"data:image/png;base64,{base64.b64encode(buf.getvalue()).decode()}"
+    b64 = base64.b64encode(buf.getvalue()).decode()
+    image_data_url = f"data:image/png;base64,{b64}"
 
     client = get_provider("openai")
     prompt = build_typst_gen_prompt(

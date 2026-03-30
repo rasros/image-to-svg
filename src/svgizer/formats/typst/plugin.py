@@ -15,7 +15,8 @@ from svgizer.formats.typst.prompts import build_typst_gen_prompt
 
 log = logging.getLogger(__name__)
 
-# Built using concatenated strings to prevent Markdown parsers from choking on nested fences
+# Built using concatenated strings to prevent Markdown parsers from
+# choking on nested fences
 _TYPST_FENCE = re.compile(
     "`" * 3 + r"(?:typst|typ)\s*(.*?)\s*" + "`" * 3, re.DOTALL | re.IGNORECASE
 )

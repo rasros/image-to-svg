@@ -1,5 +1,3 @@
-import re
-
 _DIFF_FORMAT_INSTRUCTIONS = """\
 Respond with one or more search/replace blocks — do NOT output the full file.
 
@@ -18,12 +16,14 @@ _TYPST_SYNTAX_RULES = (
     "Typst syntax rules:\n"
     "- ALWAYS start your document with a single page setup that forces auto-sizing:\n"
     "  `#set page(width: auto, height: auto, margin: 0pt)`\n"
-    "- Use `#set text(font: \"Arial\", size: 12pt)` for font settings.\n"
+    '- Use `#set text(font: "Arial", size: 12pt)` for font settings.\n'
     "- Use standard Typst shapes like `#rect(...)`, `#circle(...)`, `#line(...)`.\n"
-    "- Colors can be specified as `rgb(\"ff0000\")` or predefined like `red`.\n"
-    "- Use `#place(dx: 10pt, dy: 20pt)[...]` for absolute positioning to match images.\n"
+    '- Colors can be specified as `rgb("ff0000")` or predefined like `red`.\n'
+    "- Use `#place(dx: 10pt, dy: 20pt)[...]` for absolute positioning"
+    " to match images.\n"
     "- NEVER use multiple pages; everything must fit on one auto-sized page."
 )
+
 
 def build_typst_gen_prompt(
     image_data_url: str,
