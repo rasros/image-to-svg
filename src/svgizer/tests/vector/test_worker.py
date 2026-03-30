@@ -38,6 +38,30 @@ def test_use_llm_intermediate_rate_is_probabilistic():
     assert not all(results), "Expected some False values at rate=0.5"
 
 
+def test_use_llm_zero_pressure_never_calls_when_has_content():
+    for _ in range(20):
+        assert _use_llm(has_content=True, llm_rate=1.0, llm_pressure=0.0) is False
+
+
+def test_use_llm_takes_priority_over_crossover():
+    """LLM must be checked before crossover so pressure actually triggers LLM calls.
+
+    Regression: previously crossover was checked first, so once the pool had
+    ≥2 nodes every task went to crossover and llm_pressure was never effective.
+    """
+    import inspect
+
+    from svgizer.vector import worker as worker_module
+
+    src = inspect.getsource(worker_module.worker_loop)
+    # use_llm check must precede crossover check in the dispatch if/elif chain
+    llm_pos = src.index("if use_llm:")
+    crossover_pos = src.index("secondary_parent_state")
+    assert llm_pos < crossover_pos, (
+        "use_llm check must come before crossover check in worker_loop"
+    )
+
+
 def _compute_preview(png: bytes, long_side: int) -> str:
     full_img = Image.open(io.BytesIO(png)).convert("RGB")
     preview_img = resize_long_side(full_img, long_side)

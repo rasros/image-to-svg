@@ -86,18 +86,7 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, ctx: WorkerContext):
         llm_type = None
 
         try:
-            if (
-                task.secondary_parent_state
-                and task.secondary_parent_state.payload.content
-            ):
-                secondary_content = task.secondary_parent_state.payload.content
-                content, origin = plugin.crossover(
-                    parent.payload.content,
-                    secondary_content,
-                    orig_img_fast,
-                )
-
-            elif use_llm:
+            if use_llm:
                 llm_type = "llm-generate"
                 if ctx.llm_in_flight is not None:
                     with ctx.llm_in_flight.get_lock():
@@ -154,6 +143,17 @@ def worker_loop(task_q: mp.Queue, result_q: mp.Queue, ctx: WorkerContext):
                     if ctx.llm_in_flight is not None:
                         with ctx.llm_in_flight.get_lock():
                             ctx.llm_in_flight.value -= 1
+
+            elif (
+                task.secondary_parent_state
+                and task.secondary_parent_state.payload.content
+            ):
+                secondary_content = task.secondary_parent_state.payload.content
+                content, origin = plugin.crossover(
+                    parent.payload.content,
+                    secondary_content,
+                    orig_img_fast,
+                )
 
             else:
                 content, origin = plugin.mutate(
