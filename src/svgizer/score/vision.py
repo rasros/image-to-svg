@@ -99,8 +99,7 @@ class VisionScorer(Scorer):
 
         with self._torch.no_grad():
             output = self._model.vision_model(pixel_values=pixel_values)
-            # last_hidden_state: [1, num_patches, hidden_size]
-            patch_embs = output.last_hidden_state[0]  # [N, D]
+            patch_embs = output.last_hidden_state[0]
             patch_embs = functional.normalize(patch_embs, dim=-1)
 
         n = patch_embs.shape[0]
@@ -186,24 +185,22 @@ class VisionScorer(Scorer):
 
         h, w = reference.grid_hw
 
-        # Per-patch cosine distance: 1 - dot(ref_patch, cand_patch)
-        # Both are L2-normalised, so dot product = cosine similarity ∈ [-1, 1]
-        cos_sim = (reference.patch_embeddings * cand_patch_embs).sum(dim=-1)  # [N]
-        distances = (1.0 - cos_sim).clamp(0.0, 2.0) / 2.0  # normalise to [0, 1]
+        # Per-patch cosine distance normalised to [0, 1]
+        cos_sim = (reference.patch_embeddings * cand_patch_embs).sum(dim=-1)
+        distances = (1.0 - cos_sim).clamp(0.0, 2.0) / 2.0
 
         grid = distances.cpu().float().numpy().reshape(h, w)
 
-        # Boost contrast the same way generate_diff_data_url does (3x scale)
+        # Boost contrast (3x scale)
         grid = np.clip(grid * 3.0, 0.0, 1.0)
 
-        # Upsample patch grid to target pixel resolution via PIL
         patch_img = Image.fromarray((grid * 255).astype(np.uint8), mode="L")
         out_w, out_h = reference.image.size
         if long_side > 0:
             scale = long_side / max(out_w, out_h)
             out_w, out_h = max(1, round(out_w * scale)), max(1, round(out_h * scale))
         upsampled = patch_img.resize((out_w, out_h), resample=Image.Resampling.BILINEAR)
-        vals = np.asarray(upsampled).astype(np.float32) / 255.0  # [H, W] in [0, 1]
+        vals = np.asarray(upsampled).astype(np.float32) / 255.0
 
         heatmap_rgb = _apply_hot_colormap(vals)
         heatmap_img = Image.fromarray(heatmap_rgb, mode="RGB")
