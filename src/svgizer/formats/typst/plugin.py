@@ -16,7 +16,9 @@ from svgizer.formats.typst.prompts import build_typst_gen_prompt
 log = logging.getLogger(__name__)
 
 # Built using concatenated strings to prevent Markdown parsers from choking on nested fences
-_TYPST_FENCE = re.compile("`" * 3 + r"(?:typst|typ)\s*(.*?)\s*" + "`" * 3, re.DOTALL | re.IGNORECASE)
+_TYPST_FENCE = re.compile(
+    "`" * 3 + r"(?:typst|typ)\s*(.*?)\s*" + "`" * 3, re.DOTALL | re.IGNORECASE
+)
 
 
 class TypstPlugin:
@@ -26,8 +28,9 @@ class TypstPlugin:
     def rasterize(self, content: str, out_w: int, out_h: int) -> bytes:
         import typst
 
-        # typst.compile can return a list of bytes if the document has multiple pages
-        png = typst.compile(content, format="png", ppi=144)
+        # Encode to bytes so typst-py treats it as source code, not a file path!
+        png = typst.compile(content.encode("utf-8"), format="png", ppi=144)
+
         if isinstance(png, list):
             if not png:
                 raise ValueError("Typst generated zero pages.")
@@ -44,9 +47,12 @@ class TypstPlugin:
     def rasterize_fast(self, content: str, long_side: int) -> bytes | None:
         try:
             import typst
+
             from svgizer.image_utils import resize_long_side
 
-            png = typst.compile(content, format="png", ppi=144)
+            # Encode to bytes
+            png = typst.compile(content.encode("utf-8"), format="png", ppi=144)
+
             if isinstance(png, list):
                 if not png:
                     return None
@@ -65,8 +71,9 @@ class TypstPlugin:
     def validate(self, content: str) -> tuple[bool, str | None]:
         try:
             import typst
-            # Compiling to default (PDF) in memory is the fastest way to check syntax
-            typst.compile(content)
+
+            # Compile to dummy PDF in memory to check syntax validity
+            typst.compile(content.encode("utf-8"))
             return True, None
         except Exception as e:
             return False, str(e)
