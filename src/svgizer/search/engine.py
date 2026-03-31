@@ -378,7 +378,12 @@ class MultiprocessSearchEngine(Generic[TState]):
 
         finally:
             if collector is not None:
-                collector.on_shutdown(final_pool=active_pool)
+                final_pool = list(active_pool)
+                if best_node is not None and not any(
+                    n.id == best_node.id for n in final_pool
+                ):
+                    final_pool.insert(0, best_node)
+                collector.on_shutdown(final_pool=final_pool)
             self._shutdown()
 
     def _shutdown(self) -> None:
