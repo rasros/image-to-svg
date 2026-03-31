@@ -4,17 +4,33 @@ import os
 from svgizer.score import ScorerType
 from svgizer.search import StrategyType
 
+DEFAULT_OUTPUT = "output.svg"
+DEFAULT_PROVIDER = "auto"
+DEFAULT_SCORER = "auto"
+DEFAULT_VISION_MODEL = "google/siglip-so400m-patch14-384"
+DEFAULT_STRATEGY = "nsga"
 DEFAULT_MAX_EPOCHS = -1
 DEFAULT_WORKERS = os.cpu_count() or 4
 DEFAULT_MAX_WALL_SECONDS = 60 * 15
 DEFAULT_RESUME = False
 DEFAULT_WRITE_LINEAGE = True
+DEFAULT_SAVE_RASTER = True
+DEFAULT_SAVE_HEATMAP = False
 DEFAULT_IMAGE_LONG_SIDE = 512
 DEFAULT_REASONING = "medium"
 DEFAULT_LLM_RATE = 1 / (DEFAULT_WORKERS * 2)
 DEFAULT_POOL_SIZE = 100
+DEFAULT_SEEDS = 0
+DEFAULT_BEAMS = 10
+DEFAULT_CULL_KEEP = 0.5
 DEFAULT_EPOCH_DIVERSITY = 0.0
 DEFAULT_EPOCH_VARIANCE = 0.0
+DEFAULT_EPOCH_SEEDS = 0
+DEFAULT_EPOCH_PATIENCE = 0
+DEFAULT_EPOCH_MIN_DELTA = 1e-4
+DEFAULT_EPOCH_STEPS = 0
+DEFAULT_FORMAT = "svg"
+DEFAULT_LOG_LEVEL = "INFO"
 
 
 def parse_args(args: list[str] | None = None) -> argparse.Namespace:
@@ -27,13 +43,15 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
 
     parser.add_argument("image", help="Path to input raster image (PNG/JPEG/WEBP/GIF).")
 
-    parser.add_argument("--output", "-o", default="output.svg", help="Final SVG path.")
+    parser.add_argument(
+        "--output", "-o", default=DEFAULT_OUTPUT, help="Final SVG path."
+    )
 
     parser.add_argument(
         "--provider",
         type=str,
         choices=["openai", "anthropic", "gemini", "auto"],
-        default="auto",
+        default=DEFAULT_PROVIDER,
         help="LLM provider to use. 'auto' checks environment variables.",
     )
     parser.add_argument(
@@ -47,14 +65,14 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         "--scorer",
         type=str,
         choices=[e.value for e in ScorerType],
-        default=ScorerType.AUTO.value,
+        default=DEFAULT_SCORER,
         help="Difference scoring backend (vision, simple, llm, or auto).",
     )
 
     parser.add_argument(
         "--vision-model",
         type=str,
-        default="google/siglip-so400m-patch14-384",
+        default=DEFAULT_VISION_MODEL,
         dest="vision_model",
         help="HuggingFace vision model for perceptual scoring.",
     )
@@ -63,7 +81,7 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         "--strategy",
         type=str,
         choices=[e.value for e in StrategyType],
-        default=StrategyType.NSGA.value,
+        default=DEFAULT_STRATEGY,
         help="Search strategy/evolution algorithm to use.",
     )
 
@@ -87,7 +105,7 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         "--workers",
         type=int,
         default=DEFAULT_WORKERS,
-        help=f"Parallel worker processes (default: {DEFAULT_WORKERS}, cpu count).",
+        help="Parallel worker processes (cpu count).",
     )
     parser.add_argument(
         "--max-wall-seconds",
@@ -127,14 +145,14 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         "--save-raster",
         dest="save_raster",
         action=argparse.BooleanOptionalAction,
-        default=True,
+        default=DEFAULT_SAVE_RASTER,
         help="Save a .png alongside each accepted node file.",
     )
     parser.add_argument(
         "--save-heatmap",
         dest="save_heatmap",
         action=argparse.BooleanOptionalAction,
-        default=False,
+        default=DEFAULT_SAVE_HEATMAP,
         help="Save a .heatmap.png perceptual diff alongside each accepted node file.",
     )
 
@@ -142,26 +160,20 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         "--llm-rate",
         type=float,
         default=DEFAULT_LLM_RATE,
-        help=(
-            f"Fraction of tasks (0.0-1.0) that call the LLM; the rest use local "
-            f"operations (crossover, mutations). Default: {DEFAULT_LLM_RATE}."
-        ),
+        help="Fraction of tasks (0.0-1.0) that call the LLM; the rest use local operations (crossover, mutations).",
     )
 
     parser.add_argument(
         "--pool-size",
         type=int,
         default=DEFAULT_POOL_SIZE,
-        help=(
-            f"Number of top nodes kept in the active pool for parent selection. "
-            f"Default: {DEFAULT_POOL_SIZE}."
-        ),
+        help="Number of top nodes kept in the active pool for parent selection.",
     )
 
     parser.add_argument(
         "--seeds",
         type=int,
-        default=0,
+        default=DEFAULT_SEEDS,
         dest="seeds",
         help=(
             "Target number of LLM-seeded nodes for epoch 0. "
@@ -173,24 +185,24 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--beams",
         type=int,
-        default=10,
+        default=DEFAULT_BEAMS,
         help=(
             "Number of beams (parallel hill-climbers) for the greedy strategy. "
             "Each epoch starts with this many fresh LLM seeds. "
-            "Ignored by the nsga strategy. Default: 10."
+            "Ignored by the nsga strategy."
         ),
     )
 
     parser.add_argument(
         "--cull-keep",
         type=float,
-        default=0.5,
+        default=DEFAULT_CULL_KEEP,
         dest="cull_keep",
         help=(
             "Fraction of beams eligible for expansion in the greedy strategy. "
             "Only the top scoring fraction are mutated/LLM-edited; the rest "
             "starve and are evicted by better candidates. "
-            "1.0 disables culling. Ignored by nsga. Default: 0.5."
+            "1.0 disables culling. Ignored by nsga."
         ),
     )
 
@@ -220,7 +232,7 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--epoch-seeds",
         type=int,
-        default=0,
+        default=DEFAULT_EPOCH_SEEDS,
         dest="epoch_seeds",
         help=(
             "Number of Pareto-front nodes carried into each new epoch. "
@@ -231,7 +243,7 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--epoch-patience",
         type=int,
-        default=0,
+        default=DEFAULT_EPOCH_PATIENCE,
         dest="epoch_patience",
         help=(
             "End the current epoch and re-seed from the Pareto front if the best score "
@@ -242,9 +254,19 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--epoch-min-delta",
         type=float,
-        default=1e-4,
+        default=DEFAULT_EPOCH_MIN_DELTA,
         help=(
             "Minimum absolute score improvement required to reset the patience counter."
+        ),
+    )
+    parser.add_argument(
+        "--epoch-steps",
+        type=int,
+        default=DEFAULT_EPOCH_STEPS,
+        dest="epoch_steps",
+        help=(
+            "Maximum number of completed tasks per epoch before forcing an epoch "
+            "transition. 0 means unlimited."
         ),
     )
 
@@ -252,12 +274,14 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         "--format",
         type=str,
         choices=["svg", "graphviz", "typst"],
-        default="svg",
-        help="Output vector format to generate (default: svg).",
+        default=DEFAULT_FORMAT,
+        help="Output vector format to generate.",
     )
 
     parser.add_argument(
-        "--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"]
+        "--log-level",
+        default=DEFAULT_LOG_LEVEL,
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
     )
 
     ns = parser.parse_args(args)

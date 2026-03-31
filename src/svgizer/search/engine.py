@@ -64,6 +64,7 @@ class MultiprocessSearchEngine(Generic[TState]):
         max_epochs: int | None = None,
         epoch_pool_size: int | None = None,
         epoch_variance: float | None = None,
+        epoch_steps: int | None = None,
         collector: StatCollector | None = None,
     ) -> None:
         start_time = time.monotonic()
@@ -103,6 +104,7 @@ class MultiprocessSearchEngine(Generic[TState]):
 
         epoch = 0
         epoch_no_improve = 0
+        epoch_tasks = 0
         epoch_patience_best = best_node.score if best_node else INVALID_SCORE
         epoch0_seeds_dispatched = 0
         epoch0_seeds_completed = 0
@@ -210,6 +212,7 @@ class MultiprocessSearchEngine(Generic[TState]):
                 in_flight -= 1
                 tasks_completed += 1
                 epoch_no_improve += 1
+                epoch_tasks += 1
                 if epoch == 0 and seed_tasks > 0 and res.task_id <= seed_tasks:
                     epoch0_seeds_completed += 1
 
@@ -322,6 +325,9 @@ class MultiprocessSearchEngine(Generic[TState]):
                         epoch_patience is not None
                         and epoch_no_improve >= epoch_patience
                     )
+                    steps_exhausted = (
+                        epoch_steps is not None and epoch_tasks >= epoch_steps
+                    )
                     low_diversity, pool_diversity = self.strategy.should_diversify(
                         active_pool
                     )
@@ -349,17 +355,24 @@ class MultiprocessSearchEngine(Generic[TState]):
                         and score_std < epoch_variance
                     )
 
-                    if staleness or low_diversity or low_variance:
+                    if staleness or steps_exhausted or low_diversity or low_variance:
                         reason = (
                             "staleness"
                             if staleness
-                            else ("low diversity" if low_diversity else "low variance")
+                            else (
+                                "steps exhausted"
+                                if steps_exhausted
+                                else (
+                                    "low diversity" if low_diversity else "low variance"
+                                )
+                            )
                         )
                         log.info(f"Epoch {epoch} → {epoch + 1}: {reason}")
                         epoch += 1
                         if collector is not None:
                             collector.on_epoch_transition(epoch)
                         epoch_no_improve = 0
+                        epoch_tasks = 0
                         n_seeds = epoch_pool_size or max(1, active_pool_size // 4)
                         seeds = self.strategy.epoch_seeds(active_pool, n_seeds)
                         if seeds:

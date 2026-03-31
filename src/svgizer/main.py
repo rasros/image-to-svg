@@ -105,6 +105,7 @@ def main():
             epoch_variance=args.epoch_variance or None,
             max_epochs=None if args.max_epochs < 0 else max(1, args.max_epochs),
             epoch_pool_size=args.epoch_seeds or None,
+            epoch_steps=args.epoch_steps or None,
             vision_model=args.vision_model,
             stats=stats,
             dashboard=Dashboard(stats),

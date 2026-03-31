@@ -45,6 +45,7 @@ class _EngineParams:
     epoch_min_delta: float
     max_epochs: int | None
     epoch_pool_size: int | None
+    epoch_steps: int | None
 
 
 def _load_image(image_path: str) -> tuple[Image.Image, bytes, int, int]:
@@ -66,6 +67,7 @@ def _build_engine_params(
     epoch_min_delta: float,
     max_epochs: int | None,
     epoch_pool_size: int | None,
+    epoch_steps: int | None,
 ) -> _EngineParams:
     """Compute engine configuration from search parameters."""
     is_greedy = strategy_type == StrategyType.GREEDY
@@ -78,6 +80,7 @@ def _build_engine_params(
             epoch_min_delta=epoch_min_delta,
             max_epochs=max_epochs,
             epoch_pool_size=None,
+            epoch_steps=epoch_steps,
         )
 
     seed_target = pool_size // 10 if seeds == 0 else seeds
@@ -96,6 +99,7 @@ def _build_engine_params(
         epoch_min_delta=epoch_min_delta,
         max_epochs=max_epochs,
         epoch_pool_size=epoch_pool_size,
+        epoch_steps=epoch_steps,
     )
 
 
@@ -126,6 +130,7 @@ def run_vector_search(
     epoch_variance: float | None = None,
     max_epochs: int | None = None,
     epoch_pool_size: int | None = None,
+    epoch_steps: int | None = None,
     vision_model: str = "ensemble",
     stats: "SearchStats | None" = None,
     dashboard: "Dashboard | None" = None,
@@ -251,6 +256,7 @@ def run_vector_search(
         epoch_min_delta=epoch_min_delta,
         max_epochs=max_epochs,
         epoch_pool_size=epoch_pool_size,
+        epoch_steps=epoch_steps,
     )
 
     strategy = VectorStrategyAdapter(
@@ -324,6 +330,7 @@ def run_vector_search(
             max_epochs=ep.max_epochs,
             epoch_pool_size=ep.epoch_pool_size,
             epoch_variance=epoch_variance,
+            epoch_steps=ep.epoch_steps,
             collector=collector,
         )
     finally:
