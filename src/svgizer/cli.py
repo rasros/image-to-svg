@@ -160,7 +160,8 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         "--llm-rate",
         type=float,
         default=DEFAULT_LLM_RATE,
-        help="Fraction of tasks (0.0-1.0) that call the LLM; the rest use local operations (crossover, mutations).",
+        help="Fraction of tasks (0.0-1.0) that call the LLM;"
+        " the rest use local operations (crossover, mutations).",
     )
 
     parser.add_argument(
