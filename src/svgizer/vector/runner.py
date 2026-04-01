@@ -302,11 +302,6 @@ def run_vector_search(
             )
         return result
 
-    # Start workers before the dashboard enters so that subprocess spawn output
-    # (which goes to the inherited stderr fd) doesn't disrupt Rich Live's cursor
-    # positioning.
-    engine.start_workers(worker_loop, worker_ctx)
-
     if dashboard is not None:
         logging.getLogger().addHandler(dashboard.log_handler)
 
@@ -320,6 +315,8 @@ def run_vector_search(
             # Fresh start: start scorer after dashboard so HF output doesn't
             # appear above the Live display.
             _start_scorer_thread()
+
+        engine.start_workers(worker_loop, worker_ctx)
 
         engine.run(
             initial_nodes,
