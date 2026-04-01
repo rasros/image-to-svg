@@ -145,6 +145,7 @@ class FileStorageAdapter:
                         "complexity",
                         "summary",
                         "content_md5",
+                        "evicted",
                     ]
                 )
             writer.writerow(
@@ -157,5 +158,16 @@ class FileStorageAdapter:
                     f"{node.complexity:.0f}",
                     node.state.payload.origin or "",
                     content_md5,
+                    "",
                 ]
             )
+
+    def record_eviction(self, node_id: int, tasks_completed: int) -> None:
+        if self.lineage_csv is None or not self.lineage_csv.exists():
+            return
+        try:
+            with self.lineage_csv.open("a", encoding="utf-8", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow([node_id, "", "", "", "", "", "", "", tasks_completed])
+        except Exception as e:
+            log.error(f"Failed to record eviction for node {node_id}: {e}")

@@ -233,6 +233,8 @@ class MultiprocessSearchEngine(Generic[TState]):
                         collector.on_pool_rejected(is_llm=bool(res.llm_type))
                     return
 
+                self.storage.record_eviction(evicted_node.id, tasks_completed)
+
             node_states[new_node.id] = new_state
             accepted_count += 1
             is_new_best = best_node is None or new_node.score < best_node.score
@@ -329,12 +331,16 @@ class MultiprocessSearchEngine(Generic[TState]):
                 epoch_tasks = 0
                 n_seeds = epoch_pool_size or max(1, active_pool_size // 4)
                 seeds = self.strategy.epoch_seeds(active_pool, n_seeds)
+                old_pool_ids = {n.id for n in active_pool}
                 if seeds:
                     active_pool = seeds
                     log.info(f"Epoch {epoch}: seeded with Pareto-front nodes.")
                 else:
                     active_pool = list(initial_nodes[:active_pool_size])
                     log.info(f"Epoch {epoch}: restarting from initial node.")
+                kept_ids = {n.id for n in active_pool}
+                for nid in old_pool_ids - kept_ids:
+                    self.storage.record_eviction(nid, tasks_completed)
 
                 valid_scores = [n.score for n in active_pool if n.score < INVALID_SCORE]
                 epoch_patience_best = (
@@ -411,12 +417,7 @@ class MultiprocessSearchEngine(Generic[TState]):
 
         finally:
             if collector is not None:
-                final_pool = list(active_pool)
-                if best_node is not None and not any(
-                    n.id == best_node.id for n in final_pool
-                ):
-                    final_pool.insert(0, best_node)
-                collector.on_shutdown(final_pool=final_pool)
+                collector.on_shutdown()
             self._shutdown()
 
     def _shutdown(self) -> None:

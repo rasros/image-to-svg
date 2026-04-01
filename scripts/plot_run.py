@@ -162,17 +162,22 @@ def load_lineage(run_dir: Path) -> list[dict]:
 
 
 def load_final_pool_ids(run_dir: Path) -> set[int] | None:
-    """Return the node IDs in the final active pool, or None if pool.csv is absent."""
-    path = run_dir / "pool.csv"
+    """Return node IDs in the final active pool, derived from eviction records."""
+    path = run_dir / "lineage.csv"
     if not path.exists():
         return None
-    ids: set[int] = set()
+    all_ids: set[int] = set()
+    evicted_ids: set[int] = set()
     with path.open(encoding="utf-8", newline="") as f:
         reader = csv.DictReader(f)
         for row in reader:
             with contextlib.suppress(KeyError, ValueError):
-                ids.add(int(row["id"]))
-    return ids or None
+                nid = int(row["id"])
+                all_ids.add(nid)
+                if row.get("evicted", ""):
+                    evicted_ids.add(nid)
+    pool = all_ids - evicted_ids
+    return pool or None
 
 
 def resolve_run_dirs(path: Path, top: int | None) -> list[Path]:
@@ -207,8 +212,8 @@ def _pareto_top10(lin: list[dict], pool_ids: set[int] | None = None) -> list[dic
     """Return up to 10 Pareto-front nodes (minimise score and complexity),
     sorted by score.
 
-    If *pool_ids* is provided (from pool.csv) only nodes in the final active
-    pool are considered; otherwise all lineage nodes are used as a fallback.
+    If *pool_ids* is provided only nodes in the final active pool are
+    considered; otherwise all lineage nodes are used as a fallback.
     """
     candidates = lin if pool_ids is None else [r for r in lin if r["id"] in pool_ids]
     valid = [r for r in candidates if r["score"] < float("inf")]
