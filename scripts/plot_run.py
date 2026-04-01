@@ -311,7 +311,9 @@ def plot_pareto(
     for i, ((run_dir, _), lin, pool_ids) in enumerate(
         zip(runs, lineages, pool_ids_list, strict=False)
     ):
-        candidates = lin if pool_ids is None else [r for r in lin if r["id"] in pool_ids]
+        candidates = (
+            lin if pool_ids is None else [r for r in lin if r["id"] in pool_ids]
+        )
         valid = [r for r in candidates if r["score"] < float("inf")]
         if not valid:
             continue
@@ -390,6 +392,23 @@ def plot_convergence(ax, runs: list[tuple[Path, dict]], lineages: list[list[dict
             label=f"{_label(run_dir)} score variance",
         )
 
+        prev_epoch = ch[0][3] if ch else 0
+        for elapsed, _div, _std, ep, _pr, _ar in ch:
+            if ep != prev_epoch:
+                ax.axvline(
+                    elapsed, color="grey", linewidth=0.8, linestyle=":", alpha=0.8
+                )
+                ax.text(
+                    elapsed,
+                    0.02,
+                    f" e{ep}",
+                    fontsize=8,
+                    color="grey",
+                    va="bottom",
+                    transform=ax.get_xaxis_transform(),
+                )
+                prev_epoch = ep
+
     lines1, labels1 = ax.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
     if lines1 or lines2:
@@ -444,7 +463,7 @@ def plot_summary_text(
         lines.append(f"  epochs          {int(stats.get('epochs_completed') or 0)}")
         lines.append(f"  diversity       {stats.get('pool_diversity_final', 0):.4f}")
         std = stats.get("pool_score_std_final", 0)
-        lines.append(f"  score variance  {std ** 2:.6f}")
+        lines.append(f"  score variance  {std**2:.6f}")
 
         pool_note = "" if pool_ids is None else " (final pool)"
         top10 = _pareto_top10(lin, pool_ids)
