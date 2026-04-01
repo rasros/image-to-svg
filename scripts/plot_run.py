@@ -311,7 +311,8 @@ def plot_pareto(
     for i, ((run_dir, _), lin, pool_ids) in enumerate(
         zip(runs, lineages, pool_ids_list, strict=False)
     ):
-        valid = [r for r in lin if r["score"] < float("inf")]
+        candidates = lin if pool_ids is None else [r for r in lin if r["id"] in pool_ids]
+        valid = [r for r in candidates if r["score"] < float("inf")]
         if not valid:
             continue
         color = COLORS[i % len(COLORS)]
