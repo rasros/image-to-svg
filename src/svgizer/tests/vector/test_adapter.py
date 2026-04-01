@@ -3,7 +3,7 @@ import io
 from PIL import Image
 
 from svgizer.formats.models import VectorResultPayload, VectorStatePayload
-from svgizer.search import GreedyHillClimbingStrategy
+from svgizer.search import BeamSearchStrategy
 from svgizer.search.models import Result
 from svgizer.vector.adapter import VectorStrategyAdapter
 
@@ -17,7 +17,7 @@ def _make_png(color: str = "red", size: int = 16) -> bytes:
 
 def _make_adapter(write_lineage: bool = False) -> VectorStrategyAdapter:
     return VectorStrategyAdapter(
-        base_strategy=GreedyHillClimbingStrategy(),
+        base_strategy=BeamSearchStrategy(),
         image_long_side=64,
         write_lineage=write_lineage,
     )
@@ -125,7 +125,7 @@ def test_create_new_state_heatmap_data_url_none_when_no_png():
 
 def test_create_new_state_heatmap_independent_of_save_raster():
     adapter = VectorStrategyAdapter(
-        base_strategy=GreedyHillClimbingStrategy(),
+        base_strategy=BeamSearchStrategy(),
         image_long_side=64,
         write_lineage=False,
         save_raster=False,

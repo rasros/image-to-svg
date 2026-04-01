@@ -1,11 +1,11 @@
 import pytest
 
-from svgizer.search import ChainState, GreedyHillClimbingStrategy, Result, SearchNode
+from svgizer.search import BeamSearchStrategy, ChainState, Result, SearchNode
 
 
 @pytest.fixture
 def strategy():
-    return GreedyHillClimbingStrategy(beams=4, cull_keep=1.0)
+    return BeamSearchStrategy(beams=4, cull_keep=1.0)
 
 
 def test_select_parent_picks_randomly_across_beams(strategy):
@@ -22,7 +22,7 @@ def test_select_parent_picks_randomly_across_beams(strategy):
 
 
 def test_select_parent_never_returns_secondary():
-    strategy = GreedyHillClimbingStrategy(beams=2)
+    strategy = BeamSearchStrategy(beams=2)
     dummy_state = ChainState(score=0.0, payload=None)
     nodes = [
         SearchNode(score=0.8, id=1, parent_id=0, state=dummy_state),
@@ -34,19 +34,19 @@ def test_select_parent_never_returns_secondary():
 
 
 def test_select_parent_empty_list_returns_zero():
-    strategy = GreedyHillClimbingStrategy(beams=1)
+    strategy = BeamSearchStrategy(beams=1)
     selected_id, secondary = strategy.select_parent([], progress=0.0)
     assert selected_id == 0
     assert secondary is None
 
 
 def test_top_k_count_matches_beams():
-    assert GreedyHillClimbingStrategy(beams=6).top_k_count == 6
+    assert BeamSearchStrategy(beams=6).top_k_count == 6
 
 
 def test_cull_keep_restricts_selection_to_top_beams():
     """With cull_keep=0.5 and 4 beams only the top 2 should ever be selected."""
-    strategy = GreedyHillClimbingStrategy(beams=4, cull_keep=0.5)
+    strategy = BeamSearchStrategy(beams=4, cull_keep=0.5)
     dummy_state = ChainState(score=0.0, payload=None)
     nodes = [
         SearchNode(score=0.1, id=1, parent_id=0, state=dummy_state),

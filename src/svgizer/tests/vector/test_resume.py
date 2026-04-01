@@ -89,9 +89,9 @@ def test_filter_no_op_when_within_pool():
     assert result == nodes
 
 
-def test_filter_greedy_sorts_by_score():
+def test_filter_beam_sorts_by_score():
     nodes = [_make_node(i, score=1.0 - i * 0.1) for i in range(5)]
-    result = filter_to_pool_size(nodes, pool_size=3, strategy_type=StrategyType.GREEDY)
+    result = filter_to_pool_size(nodes, pool_size=3, strategy_type=StrategyType.BEAM)
     assert len(result) == 3
     scores = [n.score for n in result]
     assert scores == sorted(scores)
@@ -120,7 +120,7 @@ def test_filter_handles_invalid_scores():
         _make_node(2, score=0.3),
         _make_node(3, score=0.5),
     ]
-    result = filter_to_pool_size(nodes, pool_size=2, strategy_type=StrategyType.GREEDY)
+    result = filter_to_pool_size(nodes, pool_size=2, strategy_type=StrategyType.BEAM)
     assert len(result) == 2
     assert all(n.score < INVALID_SCORE for n in result)
 

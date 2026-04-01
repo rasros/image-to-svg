@@ -20,8 +20,8 @@ from svgizer.image_utils import (
 from svgizer.score import ScorerType, get_scorer
 from svgizer.search import (
     INVALID_SCORE,
+    BeamSearchStrategy,
     ChainState,
-    GreedyHillClimbingStrategy,
     MultiprocessSearchEngine,
     NsgaStrategy,
     SearchNode,
@@ -70,9 +70,9 @@ def _build_engine_params(
     epoch_steps: int | None,
 ) -> _EngineParams:
     """Compute engine configuration from search parameters."""
-    is_greedy = strategy_type == StrategyType.GREEDY
+    is_beam = strategy_type == StrategyType.BEAM
 
-    if is_greedy:
+    if is_beam:
         return _EngineParams(
             pool_size=beams,
             seed_tasks=beams,
@@ -236,10 +236,10 @@ def run_vector_search(
         if valid:
             collector.seed_initial_score(min(valid, key=lambda n: n.score).score)
 
-    is_greedy = strategy_type == StrategyType.GREEDY
+    is_beam = strategy_type == StrategyType.BEAM
     base_strategy = (
-        GreedyHillClimbingStrategy[VectorStatePayload](beams=beams, cull_keep=cull_keep)
-        if is_greedy
+        BeamSearchStrategy[VectorStatePayload](beams=beams, cull_keep=cull_keep)
+        if is_beam
         else NsgaStrategy[VectorStatePayload](
             pool_size=pool_size,
             crossover_distance_threshold=10,

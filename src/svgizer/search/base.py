@@ -8,7 +8,7 @@ TState = TypeVar("TState")
 
 
 class StrategyType(str, Enum):
-    GREEDY = "greedy"
+    BEAM = "beam"
     NSGA = "nsga"
 
 

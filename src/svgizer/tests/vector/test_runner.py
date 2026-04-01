@@ -30,7 +30,7 @@ def test_run_svg_search_end_to_end(tmp_path):
         max_wall_seconds=10.0,
         log_level="DEBUG",
         scorer_type=ScorerType.SIMPLE,
-        strategy_type=StrategyType.GREEDY,
+        strategy_type=StrategyType.BEAM,
         goal="Generate a simple blue rectangle.",
         reasoning="none",
         llm_provider="openai",

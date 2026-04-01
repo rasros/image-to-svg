@@ -6,7 +6,7 @@ from svgizer.search.models import ChainState, Result, SearchNode
 TState = TypeVar("TState")
 
 
-class GreedyHillClimbingStrategy(Generic[TState]):
+class BeamSearchStrategy(Generic[TState]):
     """Parallel random beam search with culling.
 
     `beams` independent beams are seeded via LLM at the start of each epoch.

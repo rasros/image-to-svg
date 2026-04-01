@@ -9,6 +9,8 @@ DEFAULT_PROVIDER = "auto"
 DEFAULT_SCORER = "auto"
 DEFAULT_VISION_MODEL = "google/siglip-so400m-patch14-384"
 DEFAULT_STRATEGY = "nsga"
+BEAM_ONLY_PARAMS = {"beams", "cull_keep"}
+NSGA_ONLY_PARAMS = {"epoch_diversity", "epoch_variance", "epoch_seeds"}
 DEFAULT_MAX_EPOCHS = -1
 DEFAULT_WORKERS = os.cpu_count() or 4
 DEFAULT_MAX_WALL_SECONDS = 60 * 60
@@ -196,7 +198,7 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         type=int,
         default=DEFAULT_BEAMS,
         help=(
-            "Number of beams (parallel hill-climbers) for the greedy strategy. "
+            "Number of beams (parallel hill-climbers) for the beam strategy. "
             "Each epoch starts with this many fresh LLM seeds. "
             "Ignored by the nsga strategy."
         ),
@@ -208,7 +210,7 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         default=DEFAULT_CULL_KEEP,
         dest="cull_keep",
         help=(
-            "Fraction of beams eligible for expansion in the greedy strategy. "
+            "Fraction of beams eligible for expansion in the beam strategy. "
             "Only the top scoring fraction are mutated/LLM-edited; the rest "
             "starve and are evicted by better candidates. "
             "1.0 disables culling. Ignored by nsga."
@@ -304,5 +306,30 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         raise SystemExit("Error: --workers and --pool-size must be > 0")
     if ns.image_long_side < 0:
         raise SystemExit("Error: Configuration values cannot be negative")
+
+    if ns.resume_top is not None:
+        ns.resume = True
+
+    def _flags(params):
+        return ", ".join("--" + p.replace("_", "-") for p in sorted(params))
+
+    is_beam = ns.strategy == StrategyType.BEAM.value
+    if is_beam:
+        nsga_set = {
+            p for p in NSGA_ONLY_PARAMS if getattr(ns, p, None) not in (None, 0, 0.0)
+        }
+        if nsga_set:
+            raise SystemExit(
+                f"Error: {_flags(nsga_set)} are nsga-only parameters"
+                " and cannot be used with --strategy beam."
+            )
+    else:
+        beam_defaults = {"beams": DEFAULT_BEAMS, "cull_keep": DEFAULT_CULL_KEEP}
+        beam_set = {p for p in BEAM_ONLY_PARAMS if getattr(ns, p) != beam_defaults[p]}
+        if beam_set:
+            raise SystemExit(
+                f"Error: {_flags(beam_set)} are beam-only parameters"
+                " and cannot be used with --strategy nsga."
+            )
 
     return ns
