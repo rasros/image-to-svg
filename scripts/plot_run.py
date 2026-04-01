@@ -261,6 +261,7 @@ def plot_score_history(ax, runs: list[tuple[Path, dict]], lineages: list[list[di
     ax.set_title("Best score over time")
     ax.set_xlabel("Elapsed (s)")
     ax.set_ylabel("Score (lower = better)")
+    ax.grid(True, color="grey", alpha=0.15, linewidth=0.5)
 
     for i, ((run_dir, stats), _lin) in enumerate(zip(runs, lineages, strict=False)):
         history = stats.get("score_history", [])
@@ -305,6 +306,7 @@ def plot_pareto(
     ax.set_title("Score vs complexity")
     ax.set_xlabel("Complexity")
     ax.set_ylabel("Score")
+    ax.grid(True, color="grey", alpha=0.15, linewidth=0.5)
 
     for i, ((run_dir, _), lin, pool_ids) in enumerate(
         zip(runs, lineages, pool_ids_list, strict=False)
@@ -354,10 +356,13 @@ def plot_convergence(ax, runs: list[tuple[Path, dict]], lineages: list[list[dict
     ax.set_xlabel("Elapsed (s)")
     ax.set_ylabel("Pool diversity", color="tab:blue")
     ax.tick_params(axis="y", labelcolor="tab:blue")
+    ax.set_yscale("log")
 
     ax2 = ax.twinx()
-    ax2.set_ylabel("Score std dev", color="tab:orange")
+    ax2.set_ylabel("Score variance", color="tab:orange")
     ax2.tick_params(axis="y", labelcolor="tab:orange")
+    ax2.set_yscale("log")
+    ax2.grid(True, color="grey", alpha=0.15, linewidth=0.5)
 
     for i, (run_dir, stats) in enumerate(runs):
         ch = stats.get("convergence_history", [])
@@ -367,7 +372,7 @@ def plot_convergence(ax, runs: list[tuple[Path, dict]], lineages: list[list[dict
         color_std = COLORS[(i + 1) % len(COLORS)]
         xs = [r[0] for r in ch]
         diversities = [r[1] for r in ch]
-        stds = [r[2] for r in ch]
+        variances = [r[2] ** 2 for r in ch]
         ax.plot(
             xs,
             diversities,
@@ -377,11 +382,11 @@ def plot_convergence(ax, runs: list[tuple[Path, dict]], lineages: list[list[dict
         )
         ax2.plot(
             xs,
-            stds,
+            variances,
             color=color_std,
             linewidth=1.2,
             linestyle="--",
-            label=f"{_label(run_dir)} score std",
+            label=f"{_label(run_dir)} score variance",
         )
 
     lines1, labels1 = ax.get_legend_handles_labels()
@@ -437,7 +442,8 @@ def plot_summary_text(
         )
         lines.append(f"  epochs          {int(stats.get('epochs_completed') or 0)}")
         lines.append(f"  diversity       {stats.get('pool_diversity_final', 0):.4f}")
-        lines.append(f"  score std       {stats.get('pool_score_std_final', 0):.6f}")
+        std = stats.get("pool_score_std_final", 0)
+        lines.append(f"  score variance  {std ** 2:.6f}")
 
         pool_note = "" if pool_ids is None else " (final pool)"
         top10 = _pareto_top10(lin, pool_ids)
