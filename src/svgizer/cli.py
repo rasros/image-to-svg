@@ -136,6 +136,13 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         help="Resume search from existing nodes in the output directory.",
     )
     parser.add_argument(
+        "--resume-top",
+        type=int,
+        default=None,
+        dest="resume_top",
+        help="When resuming, keep only the N best-scoring nodes. Default: load all.",
+    )
+    parser.add_argument(
         "--write-lineage",
         dest="write_lineage",
         action=argparse.BooleanOptionalAction,

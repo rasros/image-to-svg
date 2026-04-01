@@ -73,6 +73,7 @@ def main():
         output_path=args.output,
         file_extension=plugin.file_extension,
         resume=args.resume,
+        resume_top=args.resume_top,
         save_raster=args.save_raster,
         save_heatmap=args.save_heatmap,
     )

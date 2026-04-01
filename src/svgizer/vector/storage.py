@@ -18,12 +18,14 @@ class FileStorageAdapter:
         output_path: str,
         file_extension: str = ".svg",
         resume: bool = False,
+        resume_top: int | None = None,
         save_raster: bool = False,
         save_heatmap: bool = False,
     ):
         self.output_path = Path(output_path)
         self.file_extension = file_extension
         self.resume = resume
+        self.resume_top = resume_top
         self.save_raster = save_raster
         self.save_heatmap = save_heatmap
         self._max_id = 0
@@ -86,6 +88,10 @@ class FileStorageAdapter:
 
             self._max_id = max(self._max_id, node_id)
             parsed_files.append((node_id, file_path))
+
+        if self.resume_top is not None:
+            parsed_files.sort(key=lambda x: float(x[1].stem.split("_")[0]))
+            parsed_files = parsed_files[: self.resume_top]
 
         resumed_data = []
         for node_id, file_path in parsed_files:
