@@ -110,6 +110,9 @@ class MultiprocessSearchEngine(Generic[TState]):
         epoch0_seeds_completed = 0
         draining_epoch = False
         epoch_drain_reason = ""
+        pool_refilling = (
+            False  # True between epoch transition and pool reaching capacity
+        )
 
         next_task_id = 1
         tasks_completed = 0
@@ -281,7 +284,8 @@ class MultiprocessSearchEngine(Generic[TState]):
                 active_pool, \
                 epoch_patience_best, \
                 draining_epoch, \
-                epoch_drain_reason
+                epoch_drain_reason, \
+                pool_refilling
 
             reason = epoch_drain_reason
             draining_epoch = False
@@ -308,9 +312,10 @@ class MultiprocessSearchEngine(Generic[TState]):
 
             valid_scores = [n.score for n in active_pool if n.score < INVALID_SCORE]
             epoch_patience_best = min(valid_scores) if valid_scores else INVALID_SCORE
+            pool_refilling = True
 
         def _check_epoch_end():
-            nonlocal draining_epoch, epoch_drain_reason
+            nonlocal draining_epoch, epoch_drain_reason, pool_refilling
 
             past_seed_phase = (
                 epoch > 0 or seed_tasks == 0 or epoch0_seeds_completed >= seed_tasks
@@ -318,8 +323,10 @@ class MultiprocessSearchEngine(Generic[TState]):
             if not past_seed_phase:
                 return
 
-            if len(active_pool) < active_pool_size:
-                return
+            if pool_refilling:
+                if len(active_pool) < active_pool_size:
+                    return
+                pool_refilling = False
 
             llm_in_flight = (
                 self._llm_in_flight.value if hasattr(self, "_llm_in_flight") else 0
@@ -429,6 +436,7 @@ class MultiprocessSearchEngine(Generic[TState]):
                         res,
                         tasks_completed=tasks_completed,
                         epoch_no_improve=epoch_no_improve,
+                        epoch_tasks=epoch_tasks,
                         llm_in_flight=llm_in_flight,
                     )
 

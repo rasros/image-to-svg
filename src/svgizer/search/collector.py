@@ -64,11 +64,13 @@ class StatCollector:
         llm_rate: float,
         epoch_diversity: float,
         epoch_variance: float,
+        epoch_steps: int = 0,
     ) -> None:
         s = self._stats
         s.llm_rate = llm_rate
         s.epoch_diversity = epoch_diversity
         s.epoch_variance = epoch_variance
+        s.epoch_steps = epoch_steps
 
     def seed_initial_score(self, best_score: float, elapsed: float = 0.0) -> None:
         s = self._stats
@@ -93,12 +95,14 @@ class StatCollector:
         *,
         tasks_completed: int,
         epoch_no_improve: int,
+        epoch_tasks: int,
         llm_in_flight: int,
     ) -> None:
         """Called for every completed result (before accept/reject decision)."""
         s = self._stats
         s.tasks_completed = tasks_completed
         s.epoch_no_improve = epoch_no_improve
+        s.epoch_tasks = epoch_tasks
         s.llm_calls_in_flight = llm_in_flight
         if res.llm_type:
             s.llm_call_count += 1
@@ -151,6 +155,7 @@ class StatCollector:
         s = self._stats
         s.epoch = epoch
         s.epoch_no_improve = 0
+        s.epoch_tasks = 0
         self._flush_row()
 
     def on_idle(self, *, llm_in_flight: int, valid_scores: list[float]) -> None:

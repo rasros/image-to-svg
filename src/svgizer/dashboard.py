@@ -124,6 +124,23 @@ def _build_renderable(stats: SearchStats) -> Panel:
             )
         )
 
+    if s.epoch_steps > 0:
+        steps_frac = min(1.0, s.epoch_tasks / s.epoch_steps)
+        if steps_frac > 0.8:
+            steps_color = "red"
+        elif steps_frac > 0.5:
+            steps_color = "yellow"
+        else:
+            steps_color = "green"
+        steps_bar = _bar(steps_frac, width=20)
+        stop_rows.append(
+            (
+                "steps",
+                f"  [{steps_color}]{steps_bar}[/{steps_color}]"
+                f"  {s.epoch_tasks}/{s.epoch_steps}",
+            )
+        )
+
     if s.epoch_patience > 0:
         stag_frac = s.stagnation_fraction()
         if stag_frac > 0.8:

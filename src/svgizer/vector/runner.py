@@ -231,6 +231,7 @@ def run_vector_search(
             llm_rate=llm_rate,
             epoch_diversity=epoch_diversity,
             epoch_variance=epoch_variance or 0.0,
+            epoch_steps=epoch_steps or 0,
         )
         valid = [n for n in initial_nodes if n.score < INVALID_SCORE]
         if valid:

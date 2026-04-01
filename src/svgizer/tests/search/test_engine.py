@@ -53,6 +53,9 @@ class FakeStorage:
         _ = node
         self.save_called = True
 
+    def record_eviction(self, node_id: int, tasks_completed: int) -> None:
+        _ = node_id, tasks_completed
+
 
 def test_engine_init():
     engine = MultiprocessSearchEngine(2, FakeStrategy(), FakeStorage())

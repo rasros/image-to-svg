@@ -82,6 +82,7 @@ def test_save_node_and_lineage(tmp_path, dummy_node):
             "complexity",
             "summary",
             "content_md5",
+            "evicted",
         ]
         assert reader[1][0] == "42"
         assert reader[1][3] == "0"  # epoch
@@ -90,6 +91,7 @@ def test_save_node_and_lineage(tmp_path, dummy_node):
 
         expected_md5 = hashlib.md5(b"<svg><circle r='10'/></svg>").hexdigest()
         assert reader[1][7] == expected_md5
+        assert reader[1][8] == ""  # evicted (empty until evicted)
 
 
 def test_load_resume_nodes(tmp_path):
