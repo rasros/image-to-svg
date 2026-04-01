@@ -38,7 +38,8 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         description=(
             "SVGizer: Evolutionary SVG approximation using Vision LLMs "
             "and pool-based refinement."
-        )
+        ),
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
     parser.add_argument("image", help="Path to input raster image (PNG/JPEG/WEBP/GIF).")
